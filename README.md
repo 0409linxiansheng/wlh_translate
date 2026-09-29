@@ -83,7 +83,7 @@ Wlh Translate 把「找文案 → 分配翻译 → 发布上线」做成一条�
 
 ```bash
 cd $PATH_TO_YOUR_BENCH
-bench get-app https://github.com/<你的用户名>/wlh_translate --branch version-16
+bench get-app https://github.com/0409linxiansheng/wlh_translate --branch version-16
 bench install-app wlh_translate
 ```
 
