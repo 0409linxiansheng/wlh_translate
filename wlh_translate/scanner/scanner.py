@@ -8,6 +8,7 @@ import re
 import frappe
 from frappe.utils import strip_html
 
+from wlh_translate.importer.po_importer import _apply_updates, iter_catalogue
 from wlh_translate.utils.language import DEFAULT_LANGUAGE
 
 
@@ -16,6 +17,13 @@ from wlh_translate.utils.language import DEFAULT_LANGUAGE
 # ============================================================
 
 MAX_TEXT_LENGTH = 5000
+
+# Translation Entry.context is a Frappe Data field, which the framework
+# limits to 140 characters.
+MAX_CONTEXT_LENGTH = 140
+
+# Batch size for the bulk SQL helpers.
+BULK_CHUNK_SIZE = 500
 
 IGNORED_DIRS = {
     ".git",
@@ -35,6 +43,24 @@ IGNORED_FILE_SUFFIXES = (
     ".pyc",
     ".pyo",
 )
+
+# App fixtures that only exist for the test runner (test_records.json,
+# test_data_*.json). Their strings never reach the UI.
+IGNORED_JSON_FILE_PREFIXES = ("test_",)
+
+# Setup wizard seed files describing country specific fixtures - tax
+# templates and charts of accounts - instead of user-facing text.
+IGNORED_SETUP_WIZARD_FILES = {"country_wise_tax.json"}
+
+# Setup wizard keys holding codes, abbreviations or conversion factors
+# rather than a label ("m", "0.006993s").
+IGNORED_SETUP_WIZARD_KEYS = {
+    "value",
+    "abbr",
+    "symbol",
+    "common_code",
+    "must_be_whole_number",
+}
 
 SOURCE_EXTENSIONS = {
     ".py": "Python",
@@ -75,20 +101,112 @@ JSON_OPTION_FIELDS = {
 # Translation call patterns
 # ============================================================
 
+# A complete source string literal, delimiters included.
+#
+# The old patterns stopped at the first quote character, so a string such as
+# _("<div class=\"columnHeading\">Other Details</div>") was cut down to
+# "<div class=" and then discarded as HTML without text. Matching the whole
+# literal lets the escape sequences be resolved afterwards. Backticks cover
+# JavaScript template literals, which Frappe also translates.
+_STRING_LITERAL = (
+    r'"(?:[^"\\]|\\.)*"'
+    r"|'(?:[^'\\]|\\.)*'"
+    r"|`(?:[^`\\]|\\.)*`"
+)
+
 TRANSLATION_PATTERNS = [
     re.compile(
-        r"""__\(\s*(['"])(.*?)\1""",
+        rf"__\(\s*({_STRING_LITERAL})",
         re.DOTALL,
     ),
     re.compile(
-        r"""frappe\._\(\s*(['"])(.*?)\1""",
+        rf"frappe\._\(\s*({_STRING_LITERAL})",
         re.DOTALL,
     ),
     re.compile(
-        r"""(?<![\w.])_\(\s*(['"])(.*?)\1""",
+        rf"(?<![\w.])_\(\s*({_STRING_LITERAL})",
         re.DOTALL,
     ),
 ]
+
+
+# Escape sequences that mean the same thing in Python source and in
+# JavaScript. Anything else keeps its backslash, matching both languages.
+_ESCAPE_MAP = {
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "b": "\b",
+    "f": "\f",
+    "v": "\v",
+    "0": "\0",
+    "\\": "\\",
+    "'": "'",
+    '"': '"',
+    "`": "`",
+    "/": "/",
+}
+
+
+def unescape_literal(literal):
+    """
+    Resolve a source string literal into the value Frappe compares against.
+
+    The translation key must be byte-for-byte what the running code passes to
+    _(), so the escapes have to be resolved before the text is stored:
+    _("<div class=\\"x\\">y</div>") looks up <div class="x">y</div>, not the
+    literal with backslashes in it.
+
+    HTML entities are deliberately left alone: the msgids shipped in
+    <app>/<app>/locale/<lang>.po keep them verbatim.
+    """
+    if not literal or len(literal) < 2:
+        return ""
+
+    body = literal[1:-1]
+
+    out = []
+    index = 0
+    length = len(body)
+
+    while index < length:
+        char = body[index]
+
+        if char != "\\" or index + 1 >= length:
+            out.append(char)
+            index += 1
+            continue
+
+        nxt = body[index + 1]
+
+        if nxt in _ESCAPE_MAP:
+            out.append(_ESCAPE_MAP[nxt])
+            index += 2
+            continue
+
+        # \uXXXX / \xXX are resolved so numeric escapes cannot leak a
+        # different key than the one the runtime compares.
+        if nxt == "u" and index + 6 <= length:
+            try:
+                out.append(chr(int(body[index + 2:index + 6], 16)))
+                index += 6
+                continue
+            except ValueError:
+                pass
+
+        if nxt == "x" and index + 4 <= length:
+            try:
+                out.append(chr(int(body[index + 2:index + 4], 16)))
+                index += 4
+                continue
+            except ValueError:
+                pass
+
+        out.append("\\")
+        out.append(nxt)
+        index += 2
+
+    return "".join(out)
 
 
 # ============================================================
@@ -99,8 +217,11 @@ def source_key(value):
     """
     Return the exact string Frappe compares against at runtime.
 
-    frappe.utils.translations._() only strips the message, and escape
-    sequences were already resolved by the source language before the call.
+    frappe.utils.translations._() only strips the message. Escape sequences
+    are already resolved by the time a value reaches here: source files go
+    through unescape_literal(), JSON and CSV values are decoded by their
+    readers. Turning "\\n" into a newline here again would corrupt a source
+    string that legitimately contains a backslash.
 
     HTML entities are deliberately preserved: the msgids shipped in
     <app>/<app>/locale/<lang>.po keep them verbatim (for example
@@ -109,7 +230,28 @@ def source_key(value):
     if not isinstance(value, str):
         return ""
 
-    return value.replace("\\n", "\n").strip()
+    return value.strip()
+
+
+def make_context(context):
+    """
+    Keep a resource context inside the 140-character Data column.
+
+    A nested JSON path such as country-wise tax templates easily exceeds the
+    column width; Frappe truncates the value and then rejects the row, so the
+    resource would be silently dropped. The overflow is replaced by a short
+    hash of the full context, keeping two different paths distinct.
+    """
+    context = context or ""
+
+    if len(context) <= MAX_CONTEXT_LENGTH:
+        return context
+
+    digest = hashlib.sha1(context.encode("utf-8")).hexdigest()[:16]
+
+    keep = MAX_CONTEXT_LENGTH - len(digest) - 1
+
+    return f"{context[:keep]}:{digest}"
 
 
 def clean_text(value):
@@ -691,7 +833,7 @@ def scan_json(app, filepath):
                             source_type="Label",
                             path=filepath,
                             text=value,
-                            context=current_path,
+                            context=make_context(current_path),
                         ):
                             count += 1
 
@@ -720,7 +862,7 @@ def scan_json(app, filepath):
                                     source_type="Message",
                                     path=filepath,
                                     text=option,
-                                    context=option_context,
+                                    context=make_context(option_context),
                                 ):
                                     count += 1
 
@@ -740,6 +882,75 @@ def scan_json(app, filepath):
     walk(data)
 
     return count
+
+
+def is_setup_wizard_data(path):
+    """
+    True for the setup wizard seed data directory.
+
+    Values such as uom_name ("Cubic Yard") or an industry ("Technology") are
+    plain JSON values that the metadata scanner ignores, yet the setup wizard
+    and the records it creates display them.
+    """
+    parts = (path or "").split(os.sep)
+
+    return "setup_wizard" in parts and "data" in parts
+
+
+def scan_setup_wizard_data(app, filepath):
+    """
+    Scan the human-facing string values of a setup wizard seed data file.
+
+    Scoped to setup_wizard/data on purpose: reading string values everywhere
+    would drag structural identifiers into the worklist. Country specific
+    fixtures and numeric keys are skipped for the same reason.
+    """
+    if os.path.basename(filepath) in IGNORED_SETUP_WIZARD_FILES:
+        return 0
+
+    try:
+        with open(
+            filepath,
+            "r",
+            encoding="utf-8",
+        ) as f:
+            data = json.load(f)
+
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return 0
+
+    count = 0
+
+    def walk(obj, json_path="json"):
+        nonlocal count
+
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key in IGNORED_SETUP_WIZARD_KEYS:
+                    continue
+
+                current_path = f"{json_path}.{key}"
+
+                if isinstance(value, str) and has_human_text(value):
+                    if save_entry(
+                        app=app,
+                        source_type="Message",
+                        path=filepath,
+                        text=value,
+                        context=make_context(f"setup_wizard:{current_path}"),
+                    ):
+                        count += 1
+
+                walk(value, current_path)
+
+        elif isinstance(obj, list):
+            for index, item in enumerate(obj):
+                walk(item, f"{json_path}[{index}]")
+
+    walk(data)
+
+    return count
+
 
 def scan_translation_csv(app, filepath):
     """
@@ -806,6 +1017,231 @@ def scan_translation_csv(app, filepath):
 
 
 # ============================================================
+# App catalogue (.po) reconciliation
+# ============================================================
+
+def scan_catalogue(app, language=DEFAULT_LANGUAGE):
+    """
+    Reconcile one app against the msgid catalogue it ships.
+
+    <app>/<app>/locale/<lang>.po is the list Frappe generates from its own
+    source tree, so it holds strings the pattern scanner cannot recover
+    (report and doctype names, template literals, strings with escaped
+    quotes) as well as the msgids the official catalogue itself still leaves
+    untranslated. Reaching the catalogue is what makes the worklist complete.
+
+    Translations the app already ships are imported; human work is never
+    overwritten.
+
+    Args:
+        app: installed app name
+        language: catalogued language code
+
+    Returns a summary dict.
+    """
+    messages = list(iter_catalogue(app, language))
+
+    if not messages:
+        print(f"  {app}/{language}: no msgid catalogue found")
+        return {"app": app, "catalogue": 0, "created": 0, "filled": 0}
+
+    try:
+        locale_path = frappe.get_app_path(app, "locale")
+    except Exception:
+        locale_path = os.path.join(app, "locale")
+
+    # Catalogue identity is the msgid rather than a line number: regenerating
+    # a .po file shifts every line and would otherwise mark the whole
+    # catalogue as Changed on the next scan.
+    po_path = os.path.join(locale_path, f"{language.replace('-', '_')}.po")
+
+    # One read instead of a lookup per msgid: source_text is a Long Text
+    # column with no index, and untouched by any query below.
+    rows = frappe.get_all(
+        "Translation Entry",
+        filters={"app_name": app},
+        fields=[
+            "name",
+            "source_text",
+            "translated_text",
+            "resource_key",
+        ],
+    )
+
+    by_resource = {}
+    by_source = {}
+
+    for row in rows:
+        if row.resource_key:
+            by_resource[row.resource_key] = row
+
+        source = source_key(row.source_text)
+
+        if source:
+            by_source.setdefault(source, row)
+
+    created = 0
+    seen = []
+    updates = []
+    realign = []
+
+    for msgid, translated in messages:
+        if not msgid:
+            continue
+
+        # The same visibility filter the source scanners use, so catalogue
+        # symbols such as "!=" never become translation work.
+        if not has_human_text(msgid):
+            continue
+
+        context = (
+            f"po:{language}:"
+            f"{hashlib.sha1(msgid.encode('utf-8')).hexdigest()[:16]}"
+        )
+
+        resource_key = make_resource_key(
+            app=app,
+            source_type="Message",
+            path=po_path,
+            context=context,
+        )
+
+        # A po-derived row for this exact msgid.
+        row = by_resource.get(resource_key)
+
+        if row is not None:
+            seen.append(row.name)
+
+            # The catalogue is what the runtime looks up, so a po-derived row
+            # whose stored text drifted from the msgid (the source was edited
+            # and the shipped .po regenerated afterwards) can never match a
+            # translation. Realign the stored key to the catalogue.
+            if source_key(row.source_text) != msgid:
+                realign.append(
+                    {
+                        "name": row.name,
+                        "source_text": msgid,
+                        "hash_key": make_hash(
+                            app=app,
+                            source_type="Message",
+                            text=msgid,
+                            context=context,
+                        ),
+                    }
+                )
+                row.source_text = msgid
+
+            if translated and not source_key(row.translated_text):
+                updates.append(
+                    {"name": row.name, "translated_text": translated}
+                )
+                row.translated_text = translated
+
+            continue
+
+        # A msgid may already be tracked because it was scanned from a source
+        # file. Filling that row beats adding a second row for the same text.
+        row = by_source.get(msgid)
+
+        if row is not None:
+            seen.append(row.name)
+
+            if translated and not source_key(row.translated_text):
+                updates.append(
+                    {"name": row.name, "translated_text": translated}
+                )
+                row.translated_text = translated
+
+            continue
+
+        if save_entry(
+            app=app,
+            source_type="Message",
+            path=po_path,
+            text=msgid,
+            context=context,
+            translated_text=translated,
+            translation_source="Imported" if translated else "Manual",
+            status="Translated" if translated else "Pending",
+        ):
+            created += 1
+
+    # Matched rows never went through save_entry, so last_seen has to be
+    # refreshed in bulk or the Suspected Deleted pass would flag them all.
+    _refresh_last_seen(seen)
+
+    _realign_sources(realign)
+
+    if updates:
+        _apply_updates(updates)
+
+    frappe.db.commit()
+
+    print(
+        f"  {app}/{language}: catalogue {len(messages)}, "
+        f"new {created}, filled {len(updates)}, realigned {len(realign)}"
+    )
+
+    return {
+        "app": app,
+        "catalogue": len(messages),
+        "created": created,
+        "filled": len(updates),
+        "realigned": len(realign),
+    }
+
+
+def _realign_sources(rows):
+    """
+    Rewrite the source text of po-derived rows that drifted from the msgid.
+
+    Only the key columns change; the existing translation is kept, since it
+    still belongs to the same resource.
+    """
+    for item in rows:
+        frappe.db.sql(
+            """
+            UPDATE `tabTranslation Entry`
+            SET source_text = %s,
+                hash_key = %s
+            WHERE name = %s
+            """,
+            (item["source_text"], item["hash_key"], item["name"]),
+        )
+
+
+def _refresh_last_seen(names):
+    """
+    Bulk-refresh last_seen for entries matched from memory.
+
+    They are matched in Python to avoid a query per msgid, so nothing else
+    updates their last_seen during the scan.
+    """
+    timestamp = frappe.utils.now_datetime()
+
+    for start in range(0, len(names), BULK_CHUNK_SIZE):
+        chunk = names[start:start + BULK_CHUNK_SIZE]
+
+        if not chunk:
+            continue
+
+        placeholders = ", ".join(["%s"] * len(chunk))
+
+        frappe.db.sql(
+            f"""
+            UPDATE `tabTranslation Entry`
+            SET last_seen = %s,
+                change_status = CASE
+                    WHEN change_status = 'Suspected Deleted' THEN 'Restored'
+                    ELSE change_status
+                END
+            WHERE name IN ({placeholders})
+            """,
+            tuple([timestamp] + chunk),
+        )
+
+
+# ============================================================
 # App scanner
 # ============================================================
 
@@ -843,6 +1279,27 @@ def scan_app(app):
     # disappeared from the current source tree.
     scan_started = frappe.utils.now_datetime()
 
+    # Reconcile against the app's own msgid catalogue first. It is the list
+    # Frappe generates from the source tree, so it covers strings the pattern
+    # scanner cannot recover (report names, template literals, strings with
+    # escaped quotes) and the msgids the official catalogue leaves in English.
+    try:
+        created += scan_catalogue(app, DEFAULT_LANGUAGE).get("created", 0)
+    except Exception as exc:
+        errors_before += 1
+
+        print("")
+        print("  [CATALOGUE ERROR]")
+        print(f"    app  : {app}")
+        print(f"    error: {type(exc).__name__}: {exc}")
+        print("    continuing without catalogue reconciliation")
+        print("")
+
+        try:
+            frappe.db.rollback()
+        except Exception:
+            pass
+
     for root, dirs, files in os.walk(app_path):
 
         dirs[:] = [
@@ -863,6 +1320,10 @@ def scan_app(app):
 
             try:
 
+                # A per-file savepoint keeps one broken file from discarding
+                # every row already inserted for this app in this scan.
+                frappe.db.savepoint("wlh_translate_file")
+
                 # Existing Frappe translation CSV.
                 if (
                     filename.endswith(".csv")
@@ -880,10 +1341,21 @@ def scan_app(app):
 
                 # JSON metadata.
                 if extension == ".json":
-                    created += scan_json(
-                        app,
-                        filepath,
-                    )
+                    if filename.startswith(IGNORED_JSON_FILE_PREFIXES):
+                        continue
+
+                    if is_setup_wizard_data(root):
+                        # Seed data holds user-facing values in plain strings
+                        # (uom_name, industries, ...) that scan_json ignores.
+                        created += scan_setup_wizard_data(
+                            app,
+                            filepath,
+                        )
+                    else:
+                        created += scan_json(
+                            app,
+                            filepath,
+                        )
                     continue
 
                 # Explicit translation calls.
@@ -906,7 +1378,7 @@ def scan_app(app):
                 print("")
 
                 try:
-                    frappe.db.rollback()
+                    frappe.db.rollback(save_point="wlh_translate_file")
                 except Exception:
                     pass
 
@@ -996,9 +1468,13 @@ def scan_source_file(app, filepath, source_type):
 
     for occurrence_index, match in enumerate(matches, start=1):
         try:
-            text = match.group(2)
+            literal = match.group(1)
         except (IndexError, AttributeError):
             continue
+
+        # The stored key must equal the value the running code passes to _(),
+        # so the escape sequences are resolved here.
+        text = unescape_literal(literal)
 
         if not text:
             continue

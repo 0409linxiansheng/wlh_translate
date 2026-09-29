@@ -61,6 +61,51 @@ def _catalog_to_dict(catalog):
     return translations
 
 
+def iter_catalogue(app, language):
+    """
+    Yield (msgid, translated_text) for every context-free, non-fuzzy message
+    an app ships for a language.
+
+    Unlike _catalog_to_dict() the untranslated entries are kept, because the
+    scanner needs them to surface strings the official catalogue itself still
+    leaves in English. A missing translation is returned as an empty string.
+    """
+    locale = language.replace("-", "_")
+
+    catalog = get_catalog(app, locale)
+
+    if not len(catalog):
+        mo_path = get_mo_path(app, locale)
+
+        if not mo_path.exists():
+            return
+
+        with open(mo_path, "rb") as mo_file:
+            catalog = read_mo(mo_file)
+
+    for message in catalog:
+        if not message.id:
+            continue
+
+        if message.context:
+            continue
+
+        if getattr(message, "fuzzy", False):
+            continue
+
+        string = message.string
+
+        if isinstance(string, (list, tuple)):
+            string = string[0] if string else ""
+
+        msgid = str(message.id).strip()
+
+        if not msgid:
+            continue
+
+        yield msgid, str(string or "").strip()
+
+
 def load_app_translations(app, language):
     """
     Read an app's existing translations for one language.
