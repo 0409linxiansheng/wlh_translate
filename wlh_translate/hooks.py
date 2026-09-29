@@ -11,15 +11,15 @@ app_license = "mit"
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "wlh_translate",
-# 		"logo": "/assets/wlh_translate/logo.png",
-# 		"title": "Wlh Translate",
-# 		"route": "/wlh_translate",
-# 		"has_permission": "wlh_translate.api.permission.has_app_permission"
-# 	}
-# ]
+# Registering here is what makes the boot payload treat wlh_translate as a real
+# app (frappe.boot.app_data), so its sidebar gets the right header/app context.
+add_to_apps_screen = [
+	{
+		"name": "wlh_translate",
+		"title": "Wlh Translate",
+		"route": "/desk/wlh-translate",
+	}
+]
 
 # Includes in <head>
 # ------------------

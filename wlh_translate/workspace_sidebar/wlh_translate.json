@@ -1,0 +1,62 @@
+{
+ "app": "wlh_translate",
+ "creation": "2026-09-29 20:30:00.000000",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "header_icon": "languages",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "home",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Home",
+   "link_to": "Wlh Translate",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "languages",
+   "indent": 1,
+   "keep_closed": 0,
+   "label": "Translation",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Section Break"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Translation Entry",
+   "link_to": "Translation Entry",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Translation Project",
+   "link_to": "Translation Project",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-09-29 20:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wlh Translate",
+ "name": "Wlh Translate",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "Wlh Translate"
+}
