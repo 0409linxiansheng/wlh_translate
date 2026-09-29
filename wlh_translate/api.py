@@ -196,6 +196,16 @@ def export_pending_csv(language=DEFAULT_LANGUAGE, app_name=None):
 
 
 @frappe.whitelist()
+def export_all_by_app(language=DEFAULT_LANGUAGE):
+    """Return every entry, split into one CSV per app, as a zip file."""
+    frappe.only_for("System Manager")
+
+    target_language = normalize_language(language) or DEFAULT_LANGUAGE
+
+    return exporter.build_all_by_app_zip(language=target_language)
+
+
+@frappe.whitelist()
 def import_translated_csv_file(content, language=DEFAULT_LANGUAGE):
     """Load a filled in CSV back into Translation Entry."""
     frappe.only_for("System Manager")

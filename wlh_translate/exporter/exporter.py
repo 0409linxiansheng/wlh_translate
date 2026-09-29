@@ -1,6 +1,8 @@
+import base64
 import csv
 import io
 import os
+import zipfile
 
 import frappe
 from frappe.translate import clear_cache, write_translations_file
@@ -482,4 +484,96 @@ def export_to_csv(app, language=DEFAULT_LANGUAGE):
         "language": target_language,
         "exported": len(full_dict),
         "path": path,
+    }
+
+
+# When a source text was scanned from several places it may exist once per
+# status. The file keeps one row per source text, and a finished
+# translation is always preferred over a pending one.
+OUTPUT_PRIORITY = {
+    "Reviewed": 0,
+    "Translated": 1,
+    "Pending": 2,
+}
+
+
+def _row_rank(row):
+    status_rank = OUTPUT_PRIORITY.get(row.get("status"), 9)
+    has_translation = 0 if _source_key(row.get("translated_text")) else 1
+
+    return (status_rank, has_translation)
+
+
+def _csv_text(rows):
+    buffer = io.StringIO()
+
+    # the BOM keeps Excel from reading the file as latin-1
+    buffer.write("\ufeff")
+
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(CSV_COLUMNS)
+
+    for row in rows:
+        writer.writerow([row.get(field) or "" for field in CSV_COLUMNS])
+
+    return buffer.getvalue()
+
+
+def build_all_by_app_zip(language=DEFAULT_LANGUAGE):
+    """
+    Build one CSV per app, holding every entry of that app, and zip them.
+
+    Unlike build_pending_csv() this is a full dump: pending entries are
+    included so a single file shows what is finished and what is not. Each
+    app gets its own file so the work can be handed out per app.
+
+    Returns {"content": base64 zip, "filename", "apps", "rows"}.
+    """
+    target_language = ensure_language(language)
+
+    rows = frappe.get_all(
+        "Translation Entry",
+        filters={
+            "is_translatable": 1,
+            "language": ["in", language_aliases(target_language)],
+        },
+        fields=list(CSV_COLUMNS),
+        order_by="app_name asc, source_text asc",
+    )
+
+    by_app = {}
+
+    for row in rows:
+        app = row.get("app_name") or "unknown"
+        source = _source_key(row.get("source_text"))
+
+        if not source:
+            continue
+
+        entries = by_app.setdefault(app, {})
+        current = entries.get(source)
+
+        if current is None or _row_rank(row) < _row_rank(current):
+            entries[source] = row
+
+    buffer = io.BytesIO()
+
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for app in sorted(by_app):
+            archive.writestr(f"{app}.csv", _csv_text(by_app[app].values()))
+
+    print("=" * 70)
+    print("WLH Translate: Export all by app")
+    print("=" * 70)
+
+    for app in sorted(by_app):
+        print(f"  {app}: {len(by_app[app])} source texts")
+
+    print("=" * 70)
+
+    return {
+        "content": base64.b64encode(buffer.getvalue()).decode("ascii"),
+        "filename": f"wlh_translate_all_{target_language}.zip",
+        "apps": sorted(by_app),
+        "rows": sum(len(entries) for entries in by_app.values()),
     }

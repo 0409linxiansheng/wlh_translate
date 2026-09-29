@@ -144,6 +144,41 @@ def clean_text(value):
     return value
 
 
+# Strings that survive the HTML strip but carry nothing a translator can
+# act on. They are read out of source files as labels, options or field
+# names and would otherwise pile up in the worklist forever.
+TECHNICAL_STRING_PATTERNS = (
+    # Icon class names: "fa fa-money", "fa-file-text-o"
+    re.compile(r"^fa[srb]?\s+fa-[a-z0-9-]+$"),
+    re.compile(r"^fa-[a-z0-9-]+$"),
+    # Identifiers: "reference_doctype", "party_type", "desk.page"
+    re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*$"),
+)
+
+
+def looks_like_technical_string(value):
+    """
+    Decide whether a value is a technical token rather than prose.
+
+    Examples rejected:
+        fa fa-money
+        reference_doctype
+        2
+        ----
+    """
+    value = (value or "").strip()
+
+    if not value:
+        return True
+
+    # Nothing readable at all: pure digits, punctuation, symbols. CJK is
+    # kept so a Chinese source string is never mistaken for a symbol run.
+    if not re.search(r"[A-Za-z\u4e00-\u9fff]", value):
+        return True
+
+    return any(pattern.match(value) for pattern in TECHNICAL_STRING_PATTERNS)
+
+
 def has_human_text(value):
     """
     Determine whether a value contains actual human-readable content.
@@ -152,6 +187,8 @@ def has_human_text(value):
         <div></div>
         <div id="stock-levels-placeholder"></div>
         <span class="foo"></span>
+        fa fa-money
+        reference_doctype
 
     Examples accepted:
         <div>Stock Level</div>
@@ -166,7 +203,7 @@ def has_human_text(value):
     text = strip_html(value).strip()
 
     if text:
-        return True
+        return not looks_like_technical_string(text)
 
     # An image can still be meaningful HTML, but a bare structural
     # placeholder should not become a translation resource.

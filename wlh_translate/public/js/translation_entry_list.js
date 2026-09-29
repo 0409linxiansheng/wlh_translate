@@ -92,6 +92,10 @@
 				export_pending_csv();
 			});
 
+			listview.page.add_inner_button(__("Export All By App"), () => {
+				export_all_by_app();
+			});
+
 			listview.page.add_inner_button(__("Import Translated CSV"), () => {
 				import_translated_csv(listview);
 			});
@@ -258,7 +262,23 @@
 	}
 
 	function download(filename, content) {
-		const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+		save_blob(filename, new Blob([content], { type: "text/csv;charset=utf-8" }));
+	}
+
+	// The zip comes back base64 encoded, so it has to be decoded into raw
+	// bytes before the browser can save it.
+	function download_base64(filename, base64) {
+		const binary = atob(base64);
+		const bytes = new Uint8Array(binary.length);
+
+		for (let index = 0; index < binary.length; index += 1) {
+			bytes[index] = binary.charCodeAt(index);
+		}
+
+		save_blob(filename, new Blob([bytes], { type: "application/zip" }));
+	}
+
+	function save_blob(filename, blob) {
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement("a");
 
@@ -270,6 +290,36 @@
 		document.body.removeChild(link);
 
 		URL.revokeObjectURL(url);
+	}
+
+	function export_all_by_app() {
+		frappe.call({
+			method: "wlh_translate.api.export_all_by_app",
+			args: { language: LANGUAGE },
+			freeze: true,
+			callback(response) {
+				const result = response.message || {};
+
+				if (!result.rows) {
+					frappe.show_alert({
+						message: __("Nothing to export"),
+						indicator: "orange",
+					});
+					return;
+				}
+
+				download_base64(result.filename, result.content);
+
+				frappe.show_alert({
+					message: __("{0} source texts across {1} apps exported to {2}", [
+						result.rows,
+						result.apps.length,
+						result.filename,
+					]),
+					indicator: "green",
+				});
+			},
+		});
 	}
 
 	function import_translated_csv(listview) {
