@@ -34,27 +34,35 @@ def _acquire_job_lock(name):
         )
 
 
-def _run_job(name, method, kwargs=None):
+def _run_job(name, job_method, kwargs=None):
     """Run a queued job and always release its lock."""
     try:
-        frappe.get_attr(method)(**(kwargs or {}))
+        frappe.get_attr(job_method)(**(kwargs or {}))
     finally:
         frappe.cache.delete(_job_lock_key(name))
 
 
-def _enqueue(name, method, kwargs=None):
+def _enqueue(name, job_method, kwargs=None):
     frappe.only_for("System Manager")
 
     _acquire_job_lock(name)
 
-    frappe.enqueue(
-        "wlh_translate.api._run_job",
-        queue="long",
-        timeout=LOCK_TIMEOUT,
-        name=name,
-        method=method,
-        kwargs=kwargs or {},
-    )
+    try:
+        # the job argument is called job_method because enqueue() already
+        # uses "method" for the callable it should run
+        frappe.enqueue(
+            "wlh_translate.api._run_job",
+            queue="long",
+            timeout=LOCK_TIMEOUT,
+            name=name,
+            job_method=job_method,
+            kwargs=kwargs or {},
+        )
+    except Exception:
+        # never leave the lock behind on a failed queueing attempt, that
+        # would keep the button dead for the whole lock lifetime
+        frappe.cache.delete(_job_lock_key(name))
+        raise
 
     return {"queued": True, "job": name}
 
