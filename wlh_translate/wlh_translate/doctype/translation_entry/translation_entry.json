@@ -1,0 +1,142 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "source_text",
+  "translated_text",
+  "language",
+  "app_name",
+  "module_name",
+  "source_type",
+  "context",
+  "source_path",
+  "line_number",
+  "translation_source",
+  "status",
+  "resource_key",
+  "hash_key",
+  "is_translatable",
+  "ignore_reason",
+  "first_seen",
+  "last_seen",
+  "change_status"
+ ],
+ "fields": [
+  {
+   "fieldname": "source_text",
+   "fieldtype": "Long Text",
+   "label": "Source Text",
+   "reqd": 1
+  },
+  {
+   "fieldname": "translated_text",
+   "fieldtype": "Long Text",
+   "label": "Translated Text"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language",
+   "default": "zh"
+  },
+  {
+   "fieldname": "app_name",
+   "fieldtype": "Data",
+   "label": "App Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "module_name",
+   "fieldtype": "Data",
+   "label": "Module Name"
+  },
+  {
+   "fieldname": "source_type",
+   "fieldtype": "Select",
+   "label": "Source Type",
+   "options": "DocField\nLabel\nMessage\nJS\nPython\nHTML\nWorkspace\nReport\nOther"
+  },
+  {
+   "fieldname": "context",
+   "fieldtype": "Data",
+   "label": "Context"
+  },
+  {
+   "fieldname": "source_path",
+   "fieldtype": "Long Text",
+   "label": "Source Path"
+  },
+  {
+   "fieldname": "line_number",
+   "fieldtype": "Int",
+   "label": "Line Number"
+  },
+  {
+   "fieldname": "translation_source",
+   "fieldtype": "Select",
+   "label": "Translation Source",
+   "options": "Manual\nAI\nDictionary\nImported",
+   "default": "Manual"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nTranslated\nReviewed",
+   "default": "Pending"
+  },
+  {
+   "fieldname": "resource_key",
+   "fieldtype": "Data",
+   "label": "Resource Key",
+   "unique": 1
+  },
+  {
+   "fieldname": "hash_key",
+   "fieldtype": "Data",
+   "label": "Hash Key"
+  },
+  {
+   "fieldname": "is_translatable",
+   "fieldtype": "Check",
+   "label": "Is Translatable",
+   "default": "1"
+  },
+  {
+   "fieldname": "ignore_reason",
+   "fieldtype": "Data",
+   "label": "Ignore Reason"
+  },
+  {
+   "fieldname": "first_seen",
+   "fieldtype": "Datetime",
+   "label": "First Seen"
+  },
+  {
+   "fieldname": "last_seen",
+   "fieldtype": "Datetime",
+   "label": "Last Seen"
+  },
+  {
+   "fieldname": "change_status",
+   "fieldtype": "Select",
+   "label": "Change Status",
+   "options": "New\nUnchanged\nChanged\nSuspected Deleted\nRestored",
+   "default": "New"
+  }
+ ],
+ "module": "Wlh Translate",
+ "name": "Translation Entry",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ]
+}

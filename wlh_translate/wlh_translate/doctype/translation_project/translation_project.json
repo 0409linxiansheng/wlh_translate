@@ -1,0 +1,74 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:project_name",
+ "creation": "2026-09-27 20:10:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "project_name",
+  "target_language",
+  "status",
+  "total_count",
+  "translated_count",
+  "pending_count"
+ ],
+ "fields": [
+  {
+   "fieldname": "project_name",
+   "fieldtype": "Data",
+   "label": "Project Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "target_language",
+   "fieldtype": "Data",
+   "label": "Target Language",
+   "default": "zh"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nScanning\nTranslating\nCompleted",
+   "default": "Draft"
+  },
+  {
+   "fieldname": "total_count",
+   "fieldtype": "Int",
+   "label": "Total Translation Items",
+   "default": 0
+  },
+  {
+   "fieldname": "translated_count",
+   "fieldtype": "Int",
+   "label": "Translated",
+   "default": 0
+  },
+  {
+   "fieldname": "pending_count",
+   "fieldtype": "Int",
+   "label": "Pending",
+   "default": 0
+  }
+ ],
+ "module": "Wlh Translate",
+ "name": "Translation Project",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}
