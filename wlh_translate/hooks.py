@@ -86,7 +86,8 @@ doctype_list_js = {"Translation Entry": "public/js/translation_entry_list.js"}
 # ------------
 
 # before_install = "wlh_translate.install.before_install"
-# after_install = "wlh_translate.install.after_install"
+# 安装本 app 后把站点语言切成中文（System Settings + 现有用户 + 启用 zh）
+after_install = "wlh_translate.install.after_install"
 
 # Uninstallation
 # ------------
