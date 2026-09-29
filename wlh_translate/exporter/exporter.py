@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 
 import frappe
@@ -344,6 +346,56 @@ def _insert_rows(rows):
         ignore_duplicates=True,
         chunk_size=BATCH_SIZE,
     )
+
+
+CSV_COLUMNS = ("source_text", "translated_text", "app_name", "source_type", "status")
+
+
+def build_pending_csv(
+    language=DEFAULT_LANGUAGE,
+    app_name=None,
+    statuses=("Pending",),
+):
+    """
+    Build a CSV of the entries that still need a translation.
+
+    The file is meant to be filled in and handed back to
+    wlh_translate.importer.csv_importer.import_translated_csv(), so it uses
+    plain column names and keeps source_text exactly as stored: HTML
+    entities included, because that is the string Frappe compares against.
+
+    Returns {"content": csv text, "rows": number of entries}.
+    """
+    filters = {
+        "is_translatable": 1,
+        "status": ["in", list(statuses)],
+    }
+
+    if app_name:
+        filters["app_name"] = app_name
+
+    if language:
+        filters["language"] = ["in", language_aliases(language)]
+
+    rows = frappe.get_all(
+        "Translation Entry",
+        filters=filters,
+        fields=list(CSV_COLUMNS),
+        order_by="app_name asc, source_text asc",
+    )
+
+    buffer = io.StringIO()
+
+    # the BOM keeps Excel from reading the file as latin-1
+    buffer.write("\ufeff")
+
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(CSV_COLUMNS)
+
+    for row in rows:
+        writer.writerow([row.get(field) or "" for field in CSV_COLUMNS])
+
+    return {"content": buffer.getvalue(), "rows": len(rows)}
 
 
 def export_to_csv(app, language=DEFAULT_LANGUAGE):

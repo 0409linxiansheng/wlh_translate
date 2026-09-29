@@ -1,70 +1,62 @@
 import frappe
+from frappe.utils.background_jobs import get_job, get_job_status, is_job_enqueued
 
-from wlh_translate.utils.language import DEFAULT_LANGUAGE
+from wlh_translate.exporter import exporter
+from wlh_translate.importer import csv_importer
+from wlh_translate.utils.language import DEFAULT_LANGUAGE, normalize_language
 
 
 # ============================================================
 # Background jobs
 # ============================================================
 #
-# Scanning, translating and exporting a full language pack all take longer
-# than a web request may live, so they run on the long queue. A cache lock
-# keeps a double clicked button from queueing the same job twice.
+# Scanning, translating, importing and exporting a full language pack all
+# take longer than a web request may live, so they run on the long queue.
+#
+# Duplicate protection is delegated to RQ: every job gets a fixed job_id and
+# frappe.enqueue(deduplicate=True) refuses to queue it again while the
+# previous run is still queued or running. This replaces a hand written
+# cache lock, which leaked whenever a worker died mid job and left the
+# button dead until the lock expired hours later.
 
-LOCK_TIMEOUT = 6 * 60 * 60
+JOB_TIMEOUT = 6 * 60 * 60
 
-JOB_LOCK_PREFIX = "wlh_translate:job:"
-
-
-def _job_lock_key(name):
-    # several sites share one redis instance, so the lock is site scoped
-    return f"{frappe.local.site}|{JOB_LOCK_PREFIX}{name}"
-
-
-def _acquire_job_lock(name):
-    if not frappe.cache.set(
-        _job_lock_key(name),
-        1,
-        nx=True,
-        ex=LOCK_TIMEOUT,
-    ):
-        frappe.throw(
-            f"A wlh_translate job ({name}) is already running. "
-            "Wait for it to finish before starting another one."
-        )
+# The job ids of every background job this app can queue. Used by
+# get_job_state() and reset_stuck_jobs(), and as the key the list view
+# polls with.
+JOB_NAMES = (
+    "scan_all_apps",
+    "translate_pending_entries",
+    "import_existing_translations",
+    "export_translations_to_site",
+)
 
 
-def _run_job(name, job_method, kwargs=None):
-    """Run a queued job and always release its lock."""
-    try:
-        frappe.get_attr(job_method)(**(kwargs or {}))
-    finally:
-        frappe.cache.delete(_job_lock_key(name))
+def _validate_job_name(name):
+    if name not in JOB_NAMES:
+        frappe.throw(f"Unknown wlh_translate job: {name}")
 
 
 def _enqueue(name, job_method, kwargs=None):
     frappe.only_for("System Manager")
 
-    _acquire_job_lock(name)
+    # the argument is called job_method because frappe.enqueue() already
+    # uses "method" for the callable it has to run
+    job = frappe.enqueue(
+        job_method,
+        queue="long",
+        timeout=JOB_TIMEOUT,
+        job_id=name,
+        deduplicate=True,
+        **(kwargs or {}),
+    )
 
-    try:
-        # the job argument is called job_method because enqueue() already
-        # uses "method" for the callable it should run
-        frappe.enqueue(
-            "wlh_translate.api._run_job",
-            queue="long",
-            timeout=LOCK_TIMEOUT,
-            name=name,
-            job_method=job_method,
-            kwargs=kwargs or {},
-        )
-    except Exception:
-        # never leave the lock behind on a failed queueing attempt, that
-        # would keep the button dead for the whole lock lifetime
-        frappe.cache.delete(_job_lock_key(name))
-        raise
+    if job is None:
+        # frappe.enqueue(deduplicate=True) returns None when a job with the
+        # same id is already queued or running
+        return {"queued": False, "running": True, "job": name}
 
-    return {"queued": True, "job": name}
+    return {"queued": True, "job": name, "job_id": job.id}
 
 
 @frappe.whitelist()
@@ -103,6 +95,111 @@ def export_translations_to_site(language=DEFAULT_LANGUAGE):
         "wlh_translate.exporter.exporter.export_to_site",
         {"language": language},
     )
+
+
+@frappe.whitelist()
+def get_job_state(name):
+    """
+    Report the state of one background job, for the list view to poll.
+
+    The status is "idle" when no job with that id exists any more, which
+    happens once RQ expires the record after a finished run.
+    """
+    frappe.only_for("System Manager")
+
+    _validate_job_name(name)
+
+    status = get_job_status(name)
+
+    if status is None:
+        return {"job": name, "status": "idle"}
+
+    state = {"job": name, "status": status.value}
+
+    job = get_job(name)
+
+    if job is None:
+        return state
+
+    if status.value == "finished":
+        state["result"] = job.return_value()
+
+    elif status.value == "failed":
+        # the full traceback is already in Error Log, the button only
+        # needs the last line
+        lines = [
+            line
+            for line in (job.exc_info or "").strip().splitlines()
+            if line.strip()
+        ]
+        state["error"] = lines[-1] if lines else ""
+
+    return state
+
+
+@frappe.whitelist()
+def reset_stuck_jobs():
+    """
+    Drop the records of jobs that are still queued or running.
+
+    A worker that dies mid job leaves the job marked as started, and
+    deduplication trusts that flag, so the button would stay dead until RQ
+    cleans the registry up. This is the manual way out.
+    """
+    frappe.only_for("System Manager")
+
+    removed = []
+
+    for name in JOB_NAMES:
+        if not is_job_enqueued(name):
+            continue
+
+        job = get_job(name)
+
+        if job is None:
+            continue
+
+        job.delete()
+        removed.append(name)
+
+    return {"removed": removed}
+
+
+# ============================================================
+# Translation worklist (CSV round trip)
+# ============================================================
+#
+# These run inside the request on purpose: the file is produced or consumed
+# in one go, and the user has to see the outcome immediately. They are
+# explicit exports, unlike the two comma separated lists a logged in user
+# can already download from a list view.
+
+
+@frappe.whitelist()
+def export_pending_csv(language=DEFAULT_LANGUAGE, app_name=None):
+    """Return the entries that still need a translation as a CSV file."""
+    frappe.only_for("System Manager")
+
+    target_language = normalize_language(language) or DEFAULT_LANGUAGE
+
+    result = exporter.build_pending_csv(
+        language=target_language,
+        app_name=app_name,
+    )
+
+    return {
+        "filename": f"wlh_translate_pending_{target_language}.csv",
+        "rows": result["rows"],
+        "content": result["content"],
+    }
+
+
+@frappe.whitelist()
+def import_translated_csv_file(content, language=DEFAULT_LANGUAGE):
+    """Load a filled in CSV back into Translation Entry."""
+    frappe.only_for("System Manager")
+
+    return csv_importer.import_translated_csv(content, language=language)
 
 
 # ============================================================

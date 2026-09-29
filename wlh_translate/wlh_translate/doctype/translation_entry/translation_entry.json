@@ -34,6 +34,7 @@
   {
    "fieldname": "translated_text",
    "fieldtype": "Long Text",
+   "in_list_view": 1,
    "label": "Translated Text"
   },
   {
@@ -45,6 +46,7 @@
   {
    "fieldname": "app_name",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "App Name",
    "reqd": 1
   },
@@ -56,6 +58,7 @@
   {
    "fieldname": "source_type",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Source Type",
    "options": "DocField\nLabel\nMessage\nJS\nPython\nHTML\nWorkspace\nReport\nOther"
   },
@@ -130,6 +133,9 @@
  ],
  "module": "Wlh Translate",
  "name": "Translation Entry",
+ "search_fields": "source_text,translated_text,app_name,source_path",
+ "show_title_field_in_link": 1,
+ "title_field": "source_text",
  "permissions": [
   {
    "create": 1,

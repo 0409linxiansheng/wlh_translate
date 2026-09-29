@@ -151,6 +151,40 @@ def translate_one(source_text):
     return result
 
 
+def _confirmed_translations():
+    """
+    返回 {原文: 译文}，用于给词典做批量预加载。
+
+    只取已经有译文的条目，原文和译文都按去掉首尾空白后的值做键，
+    与词典查询保持一致。
+    """
+
+    rows = frappe.get_all(
+        "Translation Entry",
+        filters={
+            "status": ["in", ["Translated", "Reviewed"]]
+        },
+        fields=[
+            "source_text",
+            "translated_text"
+        ]
+    )
+
+    confirmed = {}
+
+    for row in rows:
+
+        source = str(row.source_text or "").strip()
+        translated = str(row.translated_text or "").strip()
+
+        if not source or not translated:
+            continue
+
+        confirmed.setdefault(source, translated)
+
+    return confirmed
+
+
 def translate_pending():
     """
     处理所有 Pending 翻译。
@@ -176,48 +210,64 @@ def translate_pending():
     translated_count = 0
     rejected_count = 0
 
-    for row in rows:
+    # 预加载一次已确认翻译。source_text 没有索引，逐条查询会退化成
+    # 每条一次全表扫描，几千条要跑十几分钟。
+    translator.prime(_confirmed_translations())
 
-        source_text = row.source_text
+    try:
 
-        try:
-            translated = translate_one(source_text)
+        for row in rows:
 
-            if not translated:
+            source_text = row.source_text
+
+            try:
+                translated = translate_one(source_text)
+
+                if not translated:
+                    rejected_count += 1
+                    continue
+
+                doc = frappe.get_doc(
+                    "Translation Entry",
+                    row.name
+                )
+
+                doc.translated_text = translated
+                doc.status = "Translated"
+
+                doc.save(
+                    ignore_permissions=True
+                )
+
+                translated_count += 1
+
+                print(
+                    f"Translated: {source_text} => {translated}"
+                )
+
+            except Exception as e:
+
                 rejected_count += 1
-                continue
 
-            doc = frappe.get_doc(
-                "Translation Entry",
-                row.name
-            )
+                print(
+                    f"Rejected: {source_text} => {e}"
+                )
 
-            doc.translated_text = translated
-            doc.status = "Translated"
+        frappe.db.commit()
 
-            doc.save(
-                ignore_permissions=True
-            )
-
-            translated_count += 1
-
-            print(
-                f"Translated: {source_text} => {translated}"
-            )
-
-        except Exception as e:
-
-            rejected_count += 1
-
-            print(
-                f"Rejected: {source_text} => {e}"
-            )
-
-    frappe.db.commit()
+    finally:
+        # 不要把这个缓存留给后续的单条翻译请求
+        translator.prime(None)
 
     print(f"Translated: {translated_count}")
     print(f"Rejected/Pending: {rejected_count}")
     print("WLH Translator Finished")
+
+    # returned so the list view can report what the run did
+    return {
+        "translated": translated_count,
+        "rejected": rejected_count,
+    }
 
 
 def get_translation(source_text):

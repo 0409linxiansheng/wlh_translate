@@ -52,6 +52,23 @@ DICT = {
 class DictionaryTranslator:
 
 
+    def __init__(self):
+        # 批量翻译时预加载，避免每条原文都去查一次库
+        self._confirmed = None
+
+
+    def prime(self, translations):
+        """
+        预加载已确认翻译。
+
+        source_text 上没有索引，逐条查询等于每次全表扫描，几千条要跑
+        十几分钟。批量任务开始前用 {原文: 译文} 预加载一次即可。
+
+        translations 传 None 表示恢复逐条查询。
+        """
+        self._confirmed = translations
+
+
     def translate(self, text):
 
         if not text:
@@ -69,14 +86,17 @@ class DictionaryTranslator:
 
 
         # 3. 已确认翻译
-        result = frappe.db.get_value(
-            "Translation Entry",
-            {
-                "source_text": text,
-                "status": "Translated"
-            },
-            "translated_text"
-        )
+        if self._confirmed is not None:
+            result = self._confirmed.get(text)
+        else:
+            result = frappe.db.get_value(
+                "Translation Entry",
+                {
+                    "source_text": text,
+                    "status": "Translated"
+                },
+                "translated_text"
+            )
 
         if result:
             return result
