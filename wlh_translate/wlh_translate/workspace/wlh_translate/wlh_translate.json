@@ -1,0 +1,86 @@
+{
+ "app": "wlh_translate",
+ "charts": [],
+ "content": "[{\"id\":\"nc1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Translation Entries\",\"col\":4}},{\"id\":\"nc2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Translation Entries Pending\",\"col\":4}},{\"id\":\"nc3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Translation Entries Translated\",\"col\":4}},{\"id\":\"sp1\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"hd1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Translation Resources</b></span>\",\"col\":12}},{\"id\":\"cd1\",\"type\":\"card\",\"data\":{\"card_name\":\"Translation Resources\",\"col\":12}}]",
+ "creation": "2026-09-29 18:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "grid",
+ "idx": 0,
+ "indicator_color": "",
+ "is_hidden": 0,
+ "label": "Wlh Translate",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Translation Resources",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Translation Entry",
+   "link_count": 0,
+   "link_to": "Translation Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Translation Project",
+   "link_count": 0,
+   "link_to": "Translation Project",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-09-29 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wlh Translate",
+ "name": "Wlh Translate",
+ "number_cards": [
+  {
+   "number_card_name": "Translation Entries"
+  },
+  {
+   "number_card_name": "Translation Entries Pending"
+  },
+  {
+   "number_card_name": "Translation Entries Translated"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
+ "roles": [],
+ "sequence_id": 100.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "label": "Translation Entry",
+   "link_to": "Translation Entry",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "label": "Translation Project",
+   "link_to": "Translation Project",
+   "type": "DocType"
+  }
+ ],
+ "title": "Wlh Translate",
+ "type": "Workspace"
+}
