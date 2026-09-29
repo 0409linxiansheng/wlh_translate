@@ -27,7 +27,7 @@
  "fields": [
   {
    "fieldname": "source_text",
-   "fieldtype": "Long Text",
+   "fieldtype": "Text",
    "label": "Source Text",
    "reqd": 1
   },
