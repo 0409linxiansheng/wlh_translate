@@ -190,6 +190,7 @@ def export_pending_csv(language=DEFAULT_LANGUAGE, app_name=None):
     return {
         "filename": f"wlh_translate_pending_{target_language}.csv",
         "rows": result["rows"],
+        "occurrences": result["occurrences"],
         "content": result["content"],
     }
 

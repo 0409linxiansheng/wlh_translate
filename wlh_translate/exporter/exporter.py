@@ -364,7 +364,14 @@ def build_pending_csv(
     plain column names and keeps source_text exactly as stored: HTML
     entities included, because that is the string Frappe compares against.
 
-    Returns {"content": csv text, "rows": number of entries}.
+    One row per distinct source text. The same English string is scanned
+    from every file that mentions it, so a raw export repeats it dozens of
+    times ("Posting Date" showed up in 24 entries). The importer matches on
+    the source text and fills in every entry carrying it, so collapsing the
+    duplicates loses no coverage.
+
+    Returns {"content": csv text, "rows": distinct source texts,
+             "occurrences": entries those rows cover}.
     """
     filters = {
         "is_translatable": 1,
@@ -384,6 +391,18 @@ def build_pending_csv(
         order_by="app_name asc, source_text asc",
     )
 
+    # results are ordered by app then source text, so the row kept for a
+    # source text is always the same one
+    distinct = {}
+
+    for row in rows:
+        key = str(row.get("source_text") or "").strip()
+
+        if not key:
+            continue
+
+        distinct.setdefault(key, row)
+
     buffer = io.StringIO()
 
     # the BOM keeps Excel from reading the file as latin-1
@@ -392,10 +411,21 @@ def build_pending_csv(
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(CSV_COLUMNS)
 
-    for row in rows:
+    for row in distinct.values():
         writer.writerow([row.get(field) or "" for field in CSV_COLUMNS])
 
-    return {"content": buffer.getvalue(), "rows": len(rows)}
+    print("=" * 70)
+    print("WLH Translate: Export pending CSV")
+    print("=" * 70)
+    print(f"Distinct source texts: {len(distinct)}")
+    print(f"Entries covered      : {len(rows)}")
+    print("=" * 70)
+
+    return {
+        "content": buffer.getvalue(),
+        "rows": len(distinct),
+        "occurrences": len(rows),
+    }
 
 
 def export_to_csv(app, language=DEFAULT_LANGUAGE):

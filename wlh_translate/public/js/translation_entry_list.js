@@ -247,10 +247,10 @@
 				download(result.filename, result.content);
 
 				frappe.show_alert({
-					message: __("{0} rows exported to {1}", [
-						result.rows,
-						result.filename,
-					]),
+					message: __(
+						"{0} source texts ({1} occurrences) exported to {2}",
+						[result.rows, result.occurrences, result.filename]
+					),
 					indicator: "green",
 				});
 			},
