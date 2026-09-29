@@ -95,9 +95,30 @@ TRANSLATION_PATTERNS = [
 # Helpers
 # ============================================================
 
+def source_key(value):
+    """
+    Return the exact string Frappe compares against at runtime.
+
+    frappe.utils.translations._() only strips the message, and escape
+    sequences were already resolved by the source language before the call.
+
+    HTML entities are deliberately preserved: the msgids shipped in
+    <app>/<app>/locale/<lang>.po keep them verbatim (for example
+    "&lt;head&gt; HTML"), so an unescaped source text could never match.
+    """
+    if not isinstance(value, str):
+        return ""
+
+    return value.replace("\\n", "\n").strip()
+
+
 def clean_text(value):
     """
-    Normalize a candidate translation resource.
+    Normalize a candidate translation resource for the visibility filter.
+
+    This is only used to decide whether a value is worth translating, so
+    HTML entities are decoded here to reveal the text they carry. The stored
+    key must come from source_key(), never from this function.
 
     Reject:
     - None
@@ -450,7 +471,10 @@ def save_entry(
         True  -> newly created
         False -> skipped/existing/invalid
     """
-    text = clean_text(text)
+    # Store the runtime-exact string. clean_text() is only applied through
+    # has_human_text() below, which must never leak its unescaped form into
+    # the source text that Frappe later looks up.
+    text = source_key(text)
 
     if not text:
         return False
