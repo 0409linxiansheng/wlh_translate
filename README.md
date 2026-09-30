@@ -19,7 +19,7 @@
 - [安装](#安装)
 - [快速上手](#快速上手)
 - [界面说明](#界面说明)
-- [怎么搜索源文本](#怎么搜索源文本)
+- [怎么搜索条目](#怎么搜索条目)
 - [数据模型](#数据模型)
 - [翻译从哪来](#翻译从哪来)
 - [设计取舍](#设计取舍)
@@ -55,6 +55,8 @@ Wlh Translate 把「找文案 → 分配翻译 → 发布上线」做成一条�
 | 发布到站点 | 写入站点 `Translation` 表并清缓存，**立即生效**，不动任何 app 的 git 工作区 |
 | 后台任务 | 耗时操作走 RQ `long` 队列，前端轮询进度；`job_id` + `deduplicate` 防重复提交，另有 `Reset Stuck Job` 兜底 |
 | 变更跟踪 | `New / Unchanged / Changed / Suspected Deleted / Restored`，源码改文案或删文案都能看出来 |
+| 译文回查 | 筛选行提供「翻译文本」输入框，支持模糊匹配，方便按已有译文把单条拎出来修改 |
+| 默认只看待办 | 列表默认只显示 `is_translatable = 1` 的条目，噪声数据不占屏；筛选行里可随时去掉 |
 | 自带中文界面 | 随 app 打包 `wlh_translate/translations/zh.csv`，本 app 的界面本身就是中文 |
 
 ## 工作流程
@@ -116,16 +118,19 @@ bench install-app wlh_translate
 | **Import Translated CSV** | 导回翻译好的 CSV，只填空缺、不改写 `source_text`、不覆盖已有译文 |
 | **Reset Stuck Job** | 清理卡在 queued / running 的任务记录（仅在真的卡住时使用） |
 
-首页还有三张数字卡片：总条目数 / 待翻译 / 已翻译。
+首页还有三张数字卡片——**总条目数 / 待翻译 / 已翻译**。它们和列表用的是同一个 `is_translatable = 1` 条件，噪声数据不会被算进去。
 
-## 怎么搜索源文本
+## 怎么搜索条目
 
-列表页筛选行里的 **源文本** 输入框就是搜索框，直接输入关键字即可，**不需要自己加 `%`**。
+筛选行有三个输入框：**编号**、**翻译文本**、**源文本**，直接输入关键字即可，**不需要自己加 `%`**。
 
-- 框左侧的切换按钮显示 **`≈`** 时是模糊匹配（等价于 `like %关键字%`）；
-- 显示 **`=`** 时是精确相等，点一下按钮可以切换。
+- **翻译文本**：按译文回查。列表里看得到译文但看不到出处时，用这个框把单条拎出来修改。
+- **源文本**：按原文回查。
+- 每个框左侧的切换按钮显示 **`≈`** 时是模糊匹配（等价于 `like %关键字%`）；显示 **`=`** 时是精确相等，点一下即可切换，选择会被记住。
 
-> 实现细节：`source_text` 故意用 `Text` 而不是 `Long Text`。Frappe 只会把 `Text / Small Text / Data` 这类字段渲染成「单行输入 + 模糊匹配」的筛选框，`Long Text` 会退化成只能精确匹配的大文本框——这正是"搜不到"的常见原因。
+列表默认只显示 `is_translatable = 1` 的条目。要连噪声数据一起看，在筛选行里删掉这条条件即可。
+
+> 实现细节：`source_text` 故意用 `Text` 而不是 `Long Text`。Frappe 只会把 `Text / Small Text / Data` 这类字段渲染成「单行输入 + 模糊匹配」的筛选框，`Long Text` 会退化成只能精确匹配的大文本框——这正是"搜不到"的常见原因。`translated_text` 是 `Long Text`（译文可能很长含 HTML，不能压成 `Text`），所以它的搜索框是在列表页 JS 里用 `custom_filter_configs` 单独声明并显式指定 `like` 的，不需要改字段类型。
 
 ## 数据模型
 
@@ -145,7 +150,7 @@ bench install-app wlh_translate
 | `is_translatable` / `ignore_reason` | 被判定为无需翻译的串不会删除，只打标记，保证可追溯 |
 | `resource_key` / `hash_key` | 用于跨扫描匹配同一条资源 |
 
-**Translation Project**：把一个目标语言下的一批条目组织成项目，带 `Draft / Scanning / Translating / Completed` 状态与总数 / 已译 / 待译统计。
+**Translation Project**：把一个目标语言下的一批条目组织成项目。字段有 `Status`（`Draft / Scanning / Translating / Completed`）和三个计数 `total_count / translated_count / pending_count`。计数在**保存时重新计算**：按目标语言对应的 `language` 别名，统计 `is_translatable = 1` 的条目总数、已译（`Translated` + `Reviewed`）和待译（`Pending`）。`Status` 目前只是可选值，扫描和翻译流程不会自动改它。
 
 ## 翻译从哪来
 
@@ -179,6 +184,7 @@ wlh_translate/
 │   └── csv_importer.py       # 导回翻译好的 CSV
 ├── exporter/exporter.py      # 导出待翻译 CSV / 按 app 打包 / 发布到站点
 ├── translator/
+│   ├── base.py               # Translator 抽象基类
 │   ├── dictionary.py         # 通用词典
 │   ├── business_dictionary.py# 业务术语词典
 │   └── translator.py         # 翻译入口与质量校验
@@ -201,10 +207,12 @@ pre-commit install
 
 pre-commit 配置了以下工具：
 
-- ruff
-- eslint
+- ruff（`--select=I` 排序 import、lint、format）
 - prettier
-- pyupgrade
+- eslint
+- 以及 `check-ast` / `check-json` / `check-toml` / `check-yaml` / `debug-statements` 等基础钩子
+
+> 注意：`.py` 的缩进风格由 `pyproject.toml` 的 `[tool.ruff.format] indent-style = "tab"` 和 `.editorconfig` 规定为 **Tab**。
 
 ## 许可
 
