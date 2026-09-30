@@ -9,6 +9,15 @@ from wlh_translate.utils.language import (
 
 
 class TranslationProject(Document):
+    def validate(self):
+        """
+        Recalculate the counters on every save.
+
+        They are stored on the document instead of being aggregated at render
+        time, so saving is the only moment they can be produced.
+        """
+        self.refresh_counters()
+
     def refresh_counters(self, commit=False):
         """
         Recalculate the counter fields from the translation resource table.
