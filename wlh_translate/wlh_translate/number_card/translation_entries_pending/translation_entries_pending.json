@@ -3,7 +3,7 @@
  "docstatus": 0,
  "doctype": "Number Card",
  "document_type": "Translation Entry",
- "filters_json": "[[\"Translation Entry\",\"status\",\"=\",\"Pending\"]]",
+ "filters_json": "[[\"Translation Entry\",\"is_translatable\",\"=\",1],[\"Translation Entry\",\"status\",\"=\",\"Pending\"]]",
  "function": "Count",
  "idx": 0,
  "is_public": 1,

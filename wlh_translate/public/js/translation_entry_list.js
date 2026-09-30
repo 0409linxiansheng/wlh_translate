@@ -16,33 +16,62 @@
 	frappe.listview_settings["Translation Entry"] = {
 		add_fields: ["status", "change_status"],
 
-		formatters: {
-			// The first column is the subject, so a plain string is right.
-			// Newlines and long HTML snippets would otherwise stretch the row.
-			source_text(value) {
-				return shorten(value);
+		// The list doubles as the translation worklist, so the entries we have
+		// already decided not to translate (technical strings, seed and test
+		// data) stay out of it. They would otherwise sit here as "Suspected
+		// Deleted" noise forever: the scanner skips the files they come from,
+		// never sees them again and re-flags them on every run. The number
+		// cards count with the same filter, so the list and the counters agree.
+		// Removing the filter from the filter row still shows everything.
+		filters: [["is_translatable", "=", 1]],
+
+		// The list is read through the translation, so finding one entry to fix
+		// means searching by what is already written into it. The field is Long
+		// Text, and those would only ever be compared with "=" if left to the
+		// standard filters, so the box is declared here with a like condition.
+		// It lands next to the ID and source text boxes.
+		custom_filter_configs: [
+			{
+				fieldtype: "Data",
+				label: __("Translated Text"),
+				fieldname: "translated_text",
+				condition: "like",
+				is_filter: 1,
 			},
-			// Other columns render whatever the formatter returns as HTML.
+		],
+
+		formatters: {
+			// A column renders whatever the formatter returns as markup, so
+			// this has to be HTML rather than bare text: the list view measures
+			// every column with $(column_html).text(), and jQuery parses a
+			// plain string as a CSS selector. Translations that contain
+			// ( ) % ' & or a leading "<" are invalid selectors, the row loop
+			// then aborts and the list shows a header over an empty body.
 			translated_text(value) {
-				return frappe.utils.escape_html(shorten(value));
+				return `<span class="ellipsis">${frappe.utils.escape_html(shorten(value))}</span>`;
 			},
 		},
 
+		// The translation status wins: a translated entry must stay one click
+		// away from "show me everything that is already translated", which is
+		// how single entries are reviewed and fixed up later. The change flags
+		// only ride on the rows that are still pending, where they are the
+		// actionable signal.
 		get_indicator(doc) {
-			if (doc.change_status === "Suspected Deleted") {
-				return [__("Suspected Deleted"), "red", "change_status,=,Suspected Deleted"];
-			}
-
-			if (doc.change_status === "Changed") {
-				return [__("Changed"), "orange", "change_status,=,Changed"];
-			}
-
 			if (doc.status === "Reviewed") {
 				return [__("Reviewed"), "green", "status,=,Reviewed"];
 			}
 
 			if (doc.status === "Translated") {
 				return [__("Translated"), "blue", "status,=,Translated"];
+			}
+
+			if (doc.change_status === "Suspected Deleted") {
+				return [__("Suspected Deleted"), "red", "change_status,=,Suspected Deleted"];
+			}
+
+			if (doc.change_status === "Changed") {
+				return [__("Changed"), "orange", "change_status,=,Changed"];
 			}
 
 			return [__("Pending"), "gray", "status,=,Pending"];
