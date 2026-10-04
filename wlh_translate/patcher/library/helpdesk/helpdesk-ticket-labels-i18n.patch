@@ -1,0 +1,111 @@
+diff --git a/desk/src/components/Settings/Sla/Modals/EditResponseResolutionModal.vue b/desk/src/components/Settings/Sla/Modals/EditResponseResolutionModal.vue
+index 1932f74..2187e0f 100644
+--- a/desk/src/components/Settings/Sla/Modals/EditResponseResolutionModal.vue
++++ b/desk/src/components/Settings/Sla/Modals/EditResponseResolutionModal.vue
+@@ -7,7 +7,7 @@
+           size="sm"
+           variant="subtle"
+           placeholder="Select Priority"
+-          label="Priority"
++          :label="__('Priority')"
+           v-model="priorityData.priority"
+           :options="priorityOptions"
+           required
+diff --git a/desk/src/components/Settings/Sla/SlaPriorityList.vue b/desk/src/components/Settings/Sla/SlaPriorityList.vue
+index e7b407a..4551f89 100644
+--- a/desk/src/components/Settings/Sla/SlaPriorityList.vue
++++ b/desk/src/components/Settings/Sla/SlaPriorityList.vue
+@@ -74,6 +74,10 @@ import { Button, createResource, toast } from "frappe-ui";
+ import { computed, provide, reactive } from "vue";
+ import SlaPriorityListItem from "./SlaPriorityListItem.vue";
+ 
++// wlh_translate: labels are rendered verbatim by the app, so route them
++// through its translation table instead of shipping English only.
++const __ = window.__ || ((message) => message);
++
+ createResource({
+   url: "frappe.client.get_list",
+   params: {
+@@ -138,7 +142,7 @@ const addRow = () => {
+ 
+ const columns = computed(() => [
+   {
+-    label: "Priority",
++    label: __("Priority"),
+     key: "priority",
+     isRequired: true,
+   },
+diff --git a/desk/src/components/ticket/TicketAgentDetails.vue b/desk/src/components/ticket/TicketAgentDetails.vue
+index b9a3f84..58fd419 100644
+--- a/desk/src/components/ticket/TicketAgentDetails.vue
++++ b/desk/src/components/ticket/TicketAgentDetails.vue
+@@ -34,6 +34,10 @@ import {
+ import { Badge, dayjs, Tooltip } from "frappe-ui";
+ import { computed, onUnmounted, ref, watch } from "vue";
+ 
++// wlh_translate: labels are rendered verbatim by the app, so route them
++// through its translation table instead of shipping English only.
++const __ = window.__ || ((message) => message);
++
+ const props = defineProps({
+   ticket: {
+     type: Object,
+@@ -150,7 +154,7 @@ const sections = computed(() => [
+     badgeColor: firstResponseBadge.value.color,
+   },
+   {
+-    label: "Resolution",
++    label: __("Resolution"),
+     tooltipValue: dateFormat(
+       props.ticket.resolution_date || props.ticket.resolution_by,
+       dateTooltipFormat
+diff --git a/desk/src/components/ticket/TicketCustomerSidebar.vue b/desk/src/components/ticket/TicketCustomerSidebar.vue
+index 613163e..fbb1b0e 100644
+--- a/desk/src/components/ticket/TicketCustomerSidebar.vue
++++ b/desk/src/components/ticket/TicketCustomerSidebar.vue
+@@ -132,6 +132,10 @@ import { dateFormat, dateTooltipFormat } from "@/utils";
+ import { Avatar, dayjs, Tooltip } from "frappe-ui";
+ import { computed, inject } from "vue";
+ 
++// wlh_translate: labels are rendered verbatim by the app, so route them
++// through its translation table instead of shipping English only.
++const __ = window.__ || ((message) => message);
++
+ const emit = defineEmits(["open"]);
+ 
+ const ticket = inject(ITicket);
+@@ -170,11 +174,11 @@ const slaData = computed(() =>
+ 
+ const ticketBasicInfo = computed(() => [
+   {
+-    label: "Ticket ID",
++    label: __("Ticket ID"),
+     value: ticket.data.name,
+   },
+   {
+-    label: "Status",
++    label: __("Status"),
+     value: ticket.data.status,
+     bold: true,
+   },
+@@ -184,17 +188,17 @@ const ticketAdditionalInfo = computed(() => {
+   const fields = [
+     {
+       fieldname: "subject",
+-      label: "Subject",
++      label: __("Subject"),
+       value: ticket.data.subject,
+     },
+     {
+       fieldname: "team",
+-      label: "Team",
++      label: __("Team"),
+       value: ticket.data.agent_group || "-",
+     },
+     {
+       fieldname: "priority",
+-      label: "Priority",
++      label: __("Priority"),
+       value: ticket.data.priority,
+     },
+   ];

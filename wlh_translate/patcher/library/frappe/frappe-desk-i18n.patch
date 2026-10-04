@@ -1,0 +1,26 @@
+diff --git a/frappe/public/js/frappe/list/list_filter.js b/frappe/public/js/frappe/list/list_filter.js
+index 9225fad5e8..9ab63f2380 100644
+--- a/frappe/public/js/frappe/list/list_filter.js
++++ b/frappe/public/js/frappe/list/list_filter.js
+@@ -85,7 +85,7 @@ export default class ListFilter {
+ 	append_create_new_item($menu) {
+ 		const new_filter = {
+ 			name: "create_new",
+-			filter_name: "Save Current Filter",
++			filter_name: __("Save Current Filter"),
+ 		};
+ 
+ 		const $create_item = this.filter_template(new_filter, true);
+diff --git a/frappe/public/js/frappe/ui/sidebar/sidebar.html b/frappe/public/js/frappe/ui/sidebar/sidebar.html
+index a9724e8da3..67c1d2569e 100644
+--- a/frappe/public/js/frappe/ui/sidebar/sidebar.html
++++ b/frappe/public/js/frappe/ui/sidebar/sidebar.html
+@@ -26,7 +26,7 @@
+ 						<span class="sidebar-item-icon text-ink-gray-7">
+ 							{%= frappe.utils.icon("add" , "sm", "", "", "text-ink-gray-7 current-color", true)%}
+ 						</span>
+-						<span class="sidebar-item-label">Add Sidebar Item<span>
++						<span class="sidebar-item-label">{%= __("Add Sidebar Item") %}<span>
+ 					</a>
+ 				</div>
+ 			</div>

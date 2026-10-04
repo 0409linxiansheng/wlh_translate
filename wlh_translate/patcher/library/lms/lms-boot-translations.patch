@@ -1,0 +1,21 @@
+diff --git a/lms/www/_lms.py b/lms/www/_lms.py
+index 69016fb..4bd6e37 100644
+--- a/lms/www/_lms.py
++++ b/lms/www/_lms.py
+@@ -3,7 +3,7 @@ import re
+ import frappe
+ from bs4 import BeautifulSoup
+ from frappe import _
+-from frappe.translate import get_user_lang
++from frappe.translate import get_all_translations, get_user_lang
+ from frappe.utils.data import escape_html
+ from frappe.utils.jinja_globals import is_rtl
+ from frappe.utils.telemetry import capture
+@@ -41,6 +41,7 @@ def get_boot():
+ 			"lang": get_user_lang(),
+ 			"text_direction": "rtl" if is_rtl() else "ltr",
+ 			"date_format": frappe.get_system_settings("date_format"),
++			"translatedMessages": get_all_translations(get_user_lang()),
+ 		}
+ 	)
+ 

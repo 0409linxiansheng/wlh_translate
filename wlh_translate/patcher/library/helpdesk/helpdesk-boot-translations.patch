@@ -1,0 +1,20 @@
+diff --git a/helpdesk/www/helpdesk/index.py b/helpdesk/www/helpdesk/index.py
+index 71d646e..24c53b1 100644
+--- a/helpdesk/www/helpdesk/index.py
++++ b/helpdesk/www/helpdesk/index.py
+@@ -1,6 +1,7 @@
+ import frappe
+ from frappe import _
+ from frappe.integrations.frappe_providers.frappecloud_billing import is_fc_site
++from frappe.translate import get_all_translations
+ from frappe.utils import cint, get_system_timezone
+ from frappe.utils.jinja_globals import is_rtl
+ from frappe.utils.telemetry import capture
+@@ -49,6 +50,7 @@ def get_boot():
+             "lang": frappe.local.lang,
+             "dir": "rtl" if is_rtl() else "ltr",
+             "apps": frappe.get_installed_apps(),
++            "translatedMessages": get_all_translations(frappe.local.lang),
+             "telemetry": get_telemetry_boot(),
+         }
+     )

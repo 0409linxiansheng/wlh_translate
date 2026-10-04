@@ -1,0 +1,20 @@
+diff --git a/wiki/www/wiki_app.py b/wiki/www/wiki_app.py
+index 9c02db7..aea83d7 100644
+--- a/wiki/www/wiki_app.py
++++ b/wiki/www/wiki_app.py
+@@ -2,6 +2,7 @@
+ # See license.txt
+ 
+ import frappe
++from frappe.translate import get_all_translations, get_user_lang
+ from frappe.utils import get_system_timezone
+ 
+ from wiki.telemetry import capture, default_properties
+@@ -41,6 +42,7 @@ def get_boot():
+ 			"system_timezone": get_system_timezone(),
+ 			"asset_hashes": get_asset_hashes(),
+ 			"telemetry": default_properties(),
++			"translatedMessages": get_all_translations(get_user_lang()),
+ 		}
+ 	)
+ 

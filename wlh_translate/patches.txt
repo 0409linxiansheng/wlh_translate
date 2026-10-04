@@ -13,3 +13,4 @@ wlh_translate.patches.v1_0.enable_standard_data_translation
 wlh_translate.patches.v1_0.fill_pending_translations
 wlh_translate.patches.v1_0.fix_leaked_translations
 wlh_translate.patches.v1_0.unify_conflicting_translations
+wlh_translate.patches.v1_0.add_literal_translations
