@@ -1,0 +1,176 @@
+--- a/desk/node_modules/frappe-ui/frappe/Help/HelpModal.vue
++++ b/desk/node_modules/frappe-ui/frappe/Help/HelpModal.vue
+@@ -67,6 +67,10 @@
+ import { onMounted, computed } from 'vue'
+ import FeatherIcon from '../../src/components/FeatherIcon.vue'
+ 
++// wlh_translate: these labels are rendered verbatim by the host app, so route
++// them through its translation table instead of shipping English only.
++const __ = window.__ || ((message) => message)
++
+ const props = defineProps({
+   appName: {
+     type: String,
+@@ -111,9 +115,9 @@
+ 
+ const headingTitle = computed(() => {
+   if (!isOnboardingStepsCompleted.value && !showHelpCenter.value) {
+-    return 'Getting started'
++    return __('Getting started')
+   } else if (showHelpCenter.value) {
+-    return 'Help center'
++    return __('Help center')
+   }
+ })
+ 
+@@ -121,7 +125,7 @@
+   let items = [
+     {
+       icon: StepsIcon,
+-      label: 'Reset onboarding steps',
++      label: __('Reset onboarding steps'),
+       onClick: resetOnboardingSteps,
+       condition: () => showHelpCenter.value && isOnboardingStepsCompleted.value,
+     },
+@@ -134,7 +138,7 @@
+   let items = [
+     {
+       icon: HelpIcon,
+-      label: 'Help centre',
++      label: __('Help centre'),
+       onClick: () => {
+         syncStatus()
+         showHelpCenter.value = true
+@@ -143,7 +147,7 @@
+     },
+     {
+       icon: StepsIcon,
+-      label: 'Getting started',
++      label: __('Getting started'),
+       onClick: () => (showHelpCenter.value = false),
+       condition: showHelpCenter.value && !isOnboardingStepsCompleted.value,
+     },
+--- a/desk/node_modules/frappe-ui/frappe/Onboarding/OnboardingSteps.vue
++++ b/desk/node_modules/frappe-ui/frappe/Onboarding/OnboardingSteps.vue
+@@ -2,16 +2,16 @@
+   <div class="flex flex-col justify-center items-center gap-1 mt-4 mb-7">
+     <component :is="logo" class="size-10 shrink-0 rounded mb-4" />
+     <div class="text-base font-medium">
+-      {{ 'Welcome to ' + title }}
++      {{ __('Welcome to {0}', title) }}
+     </div>
+     <div class="text-p-base font-normal">
+-      {{ `${stepsCompleted}/${totalSteps} steps completed` }}
++      {{ __('{0}/{1} steps completed', stepsCompleted, totalSteps) }}
+     </div>
+   </div>
+   <div class="flex flex-col gap-2.5 overflow-hidden">
+     <div class="flex justify-between items-center py-0.5">
+       <Badge
+-        :label="`${completedPercentage}% completed`"
++        :label="__('{0}% completed', completedPercentage)"
+         :theme="completedPercentage == 100 ? 'green' : 'orange'"
+         size="lg"
+       />
+@@ -19,13 +19,13 @@
+         <Button
+           v-if="completedPercentage != 0"
+           variant="ghost"
+-          :label="'Reset all'"
++          :label="__('Reset all')"
+           @click="() => resetAll(afterResetAll)"
+         />
+         <Button
+           v-if="completedPercentage != 100"
+           variant="ghost"
+-          :label="'Skip all'"
++          :label="__('Skip all')"
+           @click="() => skipAll(afterSkipAll)"
+         />
+       </div>
+@@ -61,13 +61,13 @@
+         </component>
+         <Button
+           v-if="!step.completed && !isDependent(step)"
+-          :label="'Skip'"
++          :label="__('Skip')"
+           class="!h-4 text-xs !text-ink-gray-6 hidden group-hover:flex"
+           @click="() => skip(step.name, afterSkip)"
+         />
+         <Button
+           v-else-if="!isDependent(step)"
+-          :label="'Reset'"
++          :label="__('Reset')"
+           class="!h-4 text-xs !text-ink-gray-6 hidden group-hover:flex"
+           @click.stop="() => reset(step.name, afterReset)"
+         />
+@@ -81,6 +81,10 @@
+ import Button from '../../src/components/Button/Button.vue'
+ import Badge from '../../src/components/Badge/Badge.vue'
+ 
++// wlh_translate: these labels are rendered verbatim by the host app, so route
++// them through its translation table instead of shipping English only.
++const __ = window.__ || ((message) => message)
++
+ const props = defineProps({
+   appName: {
+     type: String,
+@@ -126,7 +130,7 @@
+   if (step.dependsOn && !step.completed) {
+     const dependsOnStep = steps.find((s) => s.name === step.dependsOn)
+     if (dependsOnStep && !dependsOnStep.completed) {
+-      return `You need to complete "${dependsOnStep.title}" first.`
++      return __('You need to complete "{0}" first.', dependsOnStep.title)
+     }
+   }
+   return ''
+--- a/desk/node_modules/frappe-ui/frappe/Onboarding/GettingStartedBanner.vue
++++ b/desk/node_modules/frappe-ui/frappe/Onboarding/GettingStartedBanner.vue
+@@ -10,10 +10,10 @@
+       <StepsIcon class="h-4 my-0.5 shrink-0" />
+       <div class="flex flex-col text-p-sm gap-0.5">
+         <div class="font-medium">
+-          {{ 'Getting started' }}
++          {{ __('Getting started') }}
+         </div>
+         <div class="text-ink-gray-7">
+-          {{ `${stepsCompleted}/${totalSteps} steps` }}
++          {{ __('{0}/{1} steps', stepsCompleted, totalSteps) }}
+         </div>
+       </div>
+     </div>
+@@ -22,7 +22,7 @@
+         <div class="flex items-center gap-2 shrink-0">
+           <StepsIcon class="h-4 my-0.5" />
+           <div class="text-ink-gray-9 font-medium">
+-            {{ 'You are all set' }}
++            {{ __('You are all set') }}
+           </div>
+         </div>
+         <FeatherIcon
+@@ -37,12 +37,12 @@
+         />
+       </div>
+       <div class="text-p-sm text-ink-gray-7">
+-        {{ 'All steps are completed successfully' }}
++        {{ __('All steps are completed successfully') }}
+       </div>
+     </div>
+     <Button
+       v-if="stepsCompleted != totalSteps"
+-      :label="stepsCompleted == 0 ? 'Start now' : 'Continue'"
++      :label="stepsCompleted == 0 ? __('Start now') : __('Continue')"
+       theme="blue"
+       @click="openOnboarding"
+     >
+@@ -63,6 +63,10 @@
+ import { showHelpCenter } from '../HelpCenter/helpCenter'
+ import { showHelpModal, minimize } from '../Help/help'
+ 
++// wlh_translate: these labels are rendered verbatim by the host app, so route
++// them through its translation table instead of shipping English only.
++const __ = window.__ || ((message) => message)
++
+ const props = defineProps({
+   isSidebarCollapsed: {
+     type: Boolean,

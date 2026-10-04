@@ -85,37 +85,108 @@
 			const jobs = [
 				{
 					label: __("Scan All Apps"),
+					verb: __("Scanning"),
 					job: "scan_all_apps",
 					method: "wlh_translate.api.scan_all_apps",
 				},
 				{
 					label: __("Translate Pending"),
+					verb: __("Translating"),
 					job: "translate_pending_entries",
 					method: "wlh_translate.api.translate_pending_entries",
 				},
 				{
 					label: __("Import From Catalogue"),
+					verb: __("Importing"),
 					job: "import_existing_translations",
 					method: "wlh_translate.api.import_existing_translations",
 					args: { language: LANGUAGE },
 				},
+				// Translations are published when they are written: an entry
+				// saved in the desk goes out immediately, and the bulk jobs
+				// publish once they finish. This button is the fallback, for
+				// when something was written outside those paths or the
+				// publication itself needs to be redone from scratch.
 				{
-					label: __("Export To Site"),
+					label: __("Force Re-sync"),
+					verb: __("Re-syncing"),
 					job: "export_translations_to_site",
 					method: "wlh_translate.api.export_translations_to_site",
 					args: { language: LANGUAGE },
 				},
 			];
 
+			// Every batch job can be narrowed down to one app. Scanning a single
+			// app is what makes it quick to pick up whatever an app installed a
+			// moment ago declares; the picker always offers "All Apps" as well.
 			for (const action of jobs) {
 				listview.page.add_inner_button(
 					action.label,
 					() => {
-						queue_job(listview, action);
+						open_app_picker(listview, action);
 					},
 					__("Bulk Jobs")
 				);
 			}
+
+			// Some text never reaches this table at all: it is hard coded in a
+			// frontend component and rendered verbatim. The scan cannot see a
+			// problem there, because there is nothing to translate; these three
+			// buttons are the way to find that text and to fix it upstream.
+			listview.page.add_inner_button(
+				__("Audit Untranslated"),
+				() => {
+					open_app_picker(
+						listview,
+						{
+							label: __("Audit Untranslated"),
+							verb: __("Auditing"),
+							job: "audit_app",
+							method: "wlh_translate.api.audit_app",
+							args_from_values: (values) => ({
+								include_dependencies: values.include_dependencies ? 1 : 0,
+							}),
+						},
+						{
+							required: true,
+							extra_fields: [
+								{
+									fieldtype: "Check",
+									fieldname: "include_dependencies",
+									label: __("Include shared UI packages"),
+									default: 1,
+								},
+							],
+						}
+					);
+				},
+				__("Source Patch")
+			);
+
+			listview.page.add_inner_button(
+				__("Upstream Patch"),
+				() => {
+					open_patch_dialog(listview);
+				},
+				__("Source Patch")
+			);
+
+			listview.page.add_inner_button(
+				__("Rebuild Frontend"),
+				() => {
+					open_app_picker(
+						listview,
+						{
+							label: __("Rebuild Frontend"),
+							verb: __("Building"),
+							job: "patch_app",
+							method: "wlh_translate.api.rebuild_frontend",
+						},
+						{ required: true }
+					);
+				},
+				__("Source Patch")
+			);
 
 			listview.page.add_inner_button(__("Export Pending CSV"), () => {
 				export_pending_csv();
@@ -142,10 +213,166 @@
 			.slice(0, 120);
 	}
 
-	function queue_job(listview, action) {
+	// Ask which app the job should apply to before queueing it. The list has
+	// to come from the server: the installed apps are not part of frappe.boot,
+	// and an app installed a moment ago has no entries yet to be noticed by.
+	//
+	// A rebuild and an audit only mean something for one app at a time, so
+	// they pass required = true: the "All Apps" entry is dropped and a choice
+	// is demanded. extra_fields adds prompt rows of the caller's own, and
+	// args_from_values turns those answers into job arguments.
+	function open_app_picker(
+		listview,
+		action,
+		{ required = false, extra_fields = [] } = {}
+	) {
+		frappe.call({
+			method: "wlh_translate.api.get_installed_apps",
+			freeze: true,
+			callback(response) {
+				const apps = response.message || [];
+
+				if (!apps.length) {
+					frappe.show_alert({
+						message: __("No app is installed"),
+						indicator: "orange",
+					});
+					return;
+				}
+
+				const app_options = apps.map((row) => ({
+					label: `${row.app_name} (${Number(row.entries || 0).toLocaleString()})`,
+					value: row.app_name,
+				}));
+
+				const fields = [
+					{
+						fieldtype: "Select",
+						fieldname: "app_name",
+						label: __("App"),
+						options: required
+							? app_options
+							: [{ label: __("All Apps"), value: "" }, ...app_options],
+						// "All Apps" is the empty value, and a required field
+						// rejects an empty string, so nothing is required there.
+						reqd: required ? 1 : 0,
+						default: required ? apps[0].app_name : "",
+					},
+					...extra_fields,
+				];
+
+				frappe.prompt(
+					fields,
+					(values) => {
+						queue_job(listview, action, values.app_name || null, values);
+					},
+					__("Choose an App"),
+					__("Start")
+				);
+			},
+		});
+	}
+
+	// Upstream patches are replayed by hand: the list shows what the library
+	// holds and how each patch relates to the files on disk, and one is picked
+	// together with what to do to it. Applying and reverting both end with a
+	// rebuild, because the bundle in public/ is what the browser loads.
+	function open_patch_dialog(listview) {
+		frappe.call({
+			method: "wlh_translate.api.list_upstream_patches",
+			freeze: true,
+			callback(response) {
+				const patches = response.message || [];
+
+				if (!patches.length) {
+					frappe.show_alert({
+						message: __("No upstream patch is registered"),
+						indicator: "orange",
+					});
+					return;
+				}
+
+				const options = patches.map((row) => ({
+					label: `${row.app_name} · ${row.patch_name} (${patch_status_label(
+						row.status
+					)})`,
+					value: `${row.app_name}::${row.patch_name}`,
+				}));
+
+				frappe.prompt(
+					[
+						{
+							fieldtype: "Select",
+							fieldname: "patch",
+							label: __("Patch"),
+							options,
+							default: options[0].value,
+							reqd: 1,
+						},
+						{
+							fieldtype: "Select",
+							fieldname: "action",
+							label: __("Action"),
+							options: [
+								{ label: __("Apply and Rebuild"), value: "apply" },
+								{ label: __("Revert and Rebuild"), value: "revert" },
+							],
+							default: "apply",
+							reqd: 1,
+						},
+					],
+					(values) => {
+						const [app_name, patch_name] = values.patch.split("::");
+						const applying = values.action === "apply";
+
+						queue_job(
+							listview,
+							{
+								label: `${app_name} · ${patch_name}`,
+								verb: applying ? __("Patching") : __("Reverting"),
+								job: "patch_app",
+								method: applying
+									? "wlh_translate.api.apply_upstream_patch"
+									: "wlh_translate.api.revert_upstream_patch",
+								args: { patch_name },
+							},
+							app_name
+						);
+					},
+					__("Upstream Patch"),
+					__("Start")
+				);
+			},
+		});
+	}
+
+	// The state a patch is in relative to the files on disk, said in the words
+	// the list uses rather than the ones the patcher returns.
+	function patch_status_label(status) {
+		const labels = {
+			applied: __("Applied"),
+			available: __("Available"),
+			conflict: __("Conflict"),
+			missing: __("Missing"),
+		};
+
+		return labels[status] || status;
+	}
+
+	function queue_job(listview, action, app_name, values = {}) {
+		const args = { ...(action.args || {}) };
+
+		if (app_name) {
+			args.app_name = app_name;
+		}
+
+		if (action.args_from_values) {
+			Object.assign(args, action.args_from_values(values) || {});
+		}
+
 		frappe.call({
 			method: action.method,
-			args: action.args || {},
+			args,
 			freeze: true,
 			callback(response) {
 				const result = response.message || {};
@@ -164,9 +391,39 @@
 					});
 				}
 
+				listview.page.set_indicator(
+					`${action.label} · ${__("Queued")}`,
+					"blue"
+				);
+
 				watch_job(listview, action);
 			},
 		});
+	}
+
+	// The status pill next to the page title is the progress display. A modal
+	// progress bar would block the page, and the run takes long enough that the
+	// user wants to keep working while it goes.
+	function progress_label(action, progress) {
+		const parts = [action.verb || __("Running")];
+
+		if (progress.app_name) {
+			if (progress.app_total > 1) {
+				parts.push(
+					`${progress.app_name} ${progress.app_index}/${progress.app_total}`
+				);
+			} else {
+				parts.push(progress.app_name);
+			}
+		}
+
+		if (progress.total) {
+			const percent = Math.floor((progress.done / progress.total) * 100);
+
+			parts.push(`${progress.done}/${progress.total} ${percent}%`);
+		}
+
+		return parts.join(" · ");
 	}
 
 	function watch_job(listview, action) {
@@ -177,6 +434,7 @@
 
 			if (polls > MAX_POLLS) {
 				clearInterval(timer);
+				listview.page.clear_indicator();
 				return;
 			}
 
@@ -186,15 +444,45 @@
 				callback(response) {
 					const state = response.message || {};
 
+					if (
+						state.status === "queued" ||
+						state.status === "deferred" ||
+						state.status === "scheduled"
+					) {
+						// accepted by the queue but no worker has picked it up
+						// yet. On a busy queue that can last a while, and
+						// without this the pill would show nothing at all.
+						listview.page.set_indicator(
+							`${action.label} · ${__("Queued")}`,
+							"blue"
+						);
+					} else if (state.progress) {
+						// the worker publishes the numbers once it starts
+						listview.page.set_indicator(
+							progress_label(action, state.progress),
+							"blue"
+						);
+					}
+
 					if (state.status === "finished") {
 						clearInterval(timer);
-						frappe.show_alert({
-							message: describe_result(action, state.result),
-							indicator: "green",
-						});
+						listview.page.clear_indicator();
+
+						if (action.job === "audit_app") {
+							// the answer is a list, not a number, so it cannot
+							// be a one line alert
+							show_audit_report(state.result);
+						} else {
+							frappe.show_alert({
+								message: describe_result(action, state.result),
+								indicator: "green",
+							});
+						}
+
 						listview.refresh();
 					} else if (state.status === "failed") {
 						clearInterval(timer);
+						listview.page.clear_indicator();
 						frappe.msgprint({
 							title: __("{0} failed", [action.label]),
 							indicator: "red",
@@ -205,6 +493,7 @@
 						listview.refresh();
 					} else if (state.status === "stopped" || state.status === "canceled") {
 						clearInterval(timer);
+						listview.page.clear_indicator();
 						frappe.show_alert({
 							message: __("{0}: stopped", [action.label]),
 							indicator: "orange",
@@ -213,6 +502,7 @@
 						// the job record expired before we could read it,
 						// but the data has already been written
 						clearInterval(timer);
+						listview.page.clear_indicator();
 						listview.refresh();
 					}
 				},
@@ -258,7 +548,72 @@
 			]);
 		}
 
+		if (action.job === "patch_app") {
+			if (result.applied) {
+				return __("{0}: applied, {1} strings registered, frontend rebuilt", [
+					action.label,
+					(result.strings || []).length,
+				]);
+			}
+
+			if (result.reverted) {
+				return __("{0}: reverted, frontend rebuilt", [action.label]);
+			}
+
+			if (result.reverted === false) {
+				// revert_patch() reports false when the patch was not in
+				// place, so nothing was taken out; the build still ran.
+				return __("{0}: was not applied, frontend rebuilt", [action.label]);
+			}
+
+			return __("{0}: frontend rebuilt", [action.label]);
+		}
+
 		return __("{0}: done", [action.label]);
+	}
+
+	// The audit result is a worklist: every row is a place where text is
+	// rendered without ever reaching this table. It is shown as a table, not
+	// as an alert, because that is what makes it usable - each line is a
+	// candidate for an upstream patch, and the file and line point at it.
+	function show_audit_report(result) {
+		const findings = (result && result.findings) || [];
+
+		if (!findings.length) {
+			frappe.msgprint({
+				title: __("Audit Untranslated Text"),
+				indicator: "green",
+				message: __("No unreachable text found in {0} files", [
+					(result && result.files) || 0,
+				]),
+			});
+			return;
+		}
+
+		const rows = findings
+			.map(
+				(row) =>
+					`<tr><td>${frappe.utils.escape_html(row.file)}:${row.line}</td>` +
+					`<td>${frappe.utils.escape_html(row.text)}</td></tr>`
+			)
+			.join("");
+
+		const note = result.truncated
+			? `<p class="text-muted">${__("Showing the first {0} findings", [
+					findings.length,
+				])}</p>`
+			: "";
+
+		const header =
+			`<th>${__("Location")}</th><th>${__("Text")}</th>`;
+
+		frappe.msgprint({
+			title: __("Audit Untranslated Text"),
+			indicator: "orange",
+			message:
+				`${note}<table class="table table-bordered">` +
+				`<thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`,
+		});
 	}
 
 	function export_pending_csv() {

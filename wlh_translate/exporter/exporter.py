@@ -8,6 +8,7 @@ import frappe
 from frappe.translate import clear_cache, write_translations_file
 from frappe.utils import now_datetime, sanitize_html
 
+from wlh_translate.utils import progress
 from wlh_translate.utils.language import (
     DEFAULT_LANGUAGE,
     ensure_language,
@@ -33,6 +34,10 @@ from wlh_translate.utils.language import (
 BATCH_SIZE = 500
 
 EXPORTABLE_STATUSES = ("Translated", "Reviewed")
+
+# Job id this export reports its progress under. It matches the name
+# wlh_translate.api.export_translations_to_site enqueues the job with.
+EXPORT_JOB = "export_translations_to_site"
 
 STATUS_PRIORITY = {
     "Reviewed": 0,
@@ -148,7 +153,7 @@ def export_to_site(
     language=DEFAULT_LANGUAGE,
     app_name=None,
     statuses=EXPORTABLE_STATUSES,
-    overwrite=False,
+    overwrite=True,
     limit=None,
 ):
     """
@@ -158,7 +163,12 @@ def export_to_site(
         language: target language filter, None to export every language
         app_name: limit to one scanned app
         statuses: Translation Entry statuses considered finished
-        overwrite: replace an existing "Translation" row whose text differs
+        overwrite: replace an existing "Translation" row whose text differs.
+            Defaults to True: "Translation Entry" is the worklist where the
+            translations are actually written and checked, so it decides
+            what the site shows. With False an entry whose site row already
+            holds a different text is counted as a conflict and dropped,
+            which silently discards exactly the edits the user made here.
         limit: maximum number of Translation Entry rows to read
 
     Returns a summary dict.
@@ -173,6 +183,11 @@ def export_to_site(
         statuses=statuses,
         limit=limit,
     )
+
+    total_candidates = len(selected)
+    processed = 0
+
+    progress.report(EXPORT_JOB, 0, total_candidates)
 
     by_language = {}
 
@@ -204,6 +219,7 @@ def export_to_site(
     if not by_language:
         print("Nothing to export: no finished translations found.")
         print("=" * 70)
+        progress.clear(EXPORT_JOB)
         return summary
 
     timestamp = now_datetime()
@@ -225,6 +241,17 @@ def export_to_site(
         )
 
         for source, row in items.items():
+            processed += 1
+
+            # One cache write per row would cost more than the row itself,
+            # so the progress is published once per batch.
+            if processed % BATCH_SIZE == 0:
+                progress.report(
+                    EXPORT_JOB,
+                    processed,
+                    total_candidates,
+                )
+
             translated = sanitize_html(_source_key(row.translated_text))
 
             if not translated:
@@ -267,17 +294,12 @@ def export_to_site(
                 continue
 
             to_insert.append(
-                (
-                    frappe.generate_hash(length=10),
-                    user,
-                    user,
-                    timestamp,
-                    timestamp,
-                    0,
+                _translation_row(
                     target_language,
                     source,
                     translated,
-                    "",
+                    timestamp=timestamp,
+                    user=user,
                 )
             )
 
@@ -302,6 +324,10 @@ def export_to_site(
             "overwritten": overwritten,
             "skipped": skipped,
         }
+
+        progress.report(EXPORT_JOB, processed, total_candidates)
+
+    progress.clear(EXPORT_JOB)
 
     summary["conflict_samples"] = summary["conflict_samples"][:20]
 
@@ -348,6 +374,119 @@ def _insert_rows(rows):
         ignore_duplicates=True,
         chunk_size=BATCH_SIZE,
     )
+
+
+def _translation_row(
+    language, source_text, translated_text, timestamp=None, user=None
+):
+    """
+    Build one raw "Translation" row for _insert_rows().
+
+    The tuple order has to match the fields list there.
+    """
+    return (
+        frappe.generate_hash(length=10),
+        user or frappe.session.user,
+        user or frappe.session.user,
+        timestamp or now_datetime(),
+        timestamp or now_datetime(),
+        0,
+        language,
+        source_text,
+        translated_text,
+        "",
+    )
+
+
+def publish_one(language, source_text, translated_text, overwrite=True):
+    """
+    Write a single source text into the site's "Translation" doctype.
+
+    This is the per row counterpart of export_to_site(). It exists so an
+    entry edited in the desk takes effect right away: the change otherwise
+    sits in "Translation Entry" until somebody remembers to run a full
+    export, which is what made the flow look like it did nothing.
+
+    Returns "skipped", "conflict", "overwritten" or "inserted". Clearing the
+    translation cache is left to the caller, so a bulk run can do it once.
+    """
+    target_language = normalize_language(language) or DEFAULT_LANGUAGE
+
+    source = _source_key(source_text)
+    translated = sanitize_html(_source_key(translated_text))
+
+    if not source or not translated:
+        return "skipped"
+
+    existing = frappe.db.sql(
+        """
+        SELECT name, source_text, translated_text
+        FROM `tabTranslation`
+        WHERE language = %s AND source_text = %s AND COALESCE(context, '') = ''
+        """,
+        (target_language, source),
+        as_dict=True,
+    )
+
+    # The comparison above is the database's, and it ignores case: a lookup
+    # for "Getting started" is answered by a stored "Getting Started". The
+    # frontend looks the key up in a plain JavaScript object, which does not
+    # ignore case, so a source string that only differs from the stored one by
+    # case would keep rendering English. Such a spelling needs a row of its
+    # own, next to the one already there.
+    exact = [row for row in existing if row.source_text == source]
+
+    if not exact and existing:
+        _insert_rows([_translation_row(target_language, source, translated)])
+
+        return "inserted"
+
+    if exact:
+        current = exact[0]
+
+        if _source_key(current.translated_text) == _source_key(translated):
+            return "skipped"
+
+        if not overwrite:
+            return "conflict"
+
+        frappe.db.set_value(
+            "Translation",
+            current.name,
+            "translated_text",
+            translated,
+            update_modified=False,
+        )
+
+        return "overwritten"
+
+    _insert_rows([_translation_row(target_language, source, translated)])
+
+    return "inserted"
+
+
+def sync_entry_on_save(doc, method=None):
+    """
+    Document hook: publish an entry the moment it is saved from the desk.
+
+    Background jobs are skipped on purpose. They save their rows one by one
+    and publish the whole batch once when they finish, which is far cheaper
+    than clearing the translation cache for every row.
+    """
+    if getattr(frappe.local, "job", None):
+        return
+
+    if not doc.is_translatable or doc.status not in EXPORTABLE_STATUSES:
+        return
+
+    if not str(doc.translated_text or "").strip():
+        return
+
+    if publish_one(doc.language, doc.source_text, doc.translated_text) in (
+        "inserted",
+        "overwritten",
+    ):
+        clear_cache()
 
 
 CSV_COLUMNS = ("source_text", "translated_text", "app_name", "source_type", "status")

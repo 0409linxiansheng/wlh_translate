@@ -3,6 +3,7 @@ import io
 
 import frappe
 
+from wlh_translate.exporter.exporter import export_to_site
 from wlh_translate.utils.language import (
     DEFAULT_LANGUAGE,
     language_aliases,
@@ -174,6 +175,14 @@ def import_translated_csv(content, language=DEFAULT_LANGUAGE, overwrite=False):
         updated += len(updates)
 
     frappe.db.commit()
+
+    if updated:
+        # 导入的译文立刻发布到站点，省掉用户再点一次「导出到站点」。
+        # 但绝不覆盖站点上已有的译文：Translation Entry 装的是扫描出来的
+        # 待办，站点上已有的多半是官方译文或人工校对过的。这里曾经传
+        # overwrite=True，一次误导入就把整站字段标签换成了别的语言。
+        # 新增的照样发布，有冲突的交回用户用「导出到站点」显式决定。
+        export_to_site(language=target_language, overwrite=False)
 
     print("-" * 70)
     print(f"Updated              : {updated}")

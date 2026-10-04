@@ -1,10 +1,18 @@
 import re
 import frappe
 
+from wlh_translate.exporter.exporter import export_to_site
 from wlh_translate.translator.dictionary import DictionaryTranslator
+from wlh_translate.utils import progress
 
 
 translator = DictionaryTranslator()
+
+# 进度上报使用的任务 id，与 wlh_translate.api.translate_pending_entries 入队时一致。
+TRANSLATE_JOB = "translate_pending_entries"
+
+# 每处理这么多条上报一次进度。逐条上报的写入开销比翻译本身还大。
+PROGRESS_STEP = 200
 
 
 def is_good_translation(source_text, translated_text):
@@ -185,27 +193,43 @@ def _confirmed_translations():
     return confirmed
 
 
-def translate_pending():
+def translate_pending(app_name=None):
     """
     处理所有 Pending 翻译。
 
     只有通过质量检查的结果才会变成 Translated。
     不合格的继续保持 Pending。
+
+    app_name 给定时只处理该应用的条目。
     """
 
     print("WLH Translator Start")
 
+    filters = {
+        "status": "Pending",
+        # 不可翻译的条目（图标类名、字段名、纯符号等）必然过不了质量
+        # 检查，取出来只会被反复拒绝，所以直接排除。
+        "is_translatable": 1,
+    }
+
+    if app_name:
+        filters["app_name"] = app_name
+
     rows = frappe.get_all(
         "Translation Entry",
-        filters={
-            "status": "Pending"
-        },
+        filters=filters,
         fields=[
             "name",
             "source_text"
         ],
         order_by="creation asc"
     )
+
+    total = len(rows)
+
+    print(f"{total} pending entries to translate")
+
+    progress.report(TRANSLATE_JOB, 0, total)
 
     translated_count = 0
     rejected_count = 0
@@ -216,7 +240,10 @@ def translate_pending():
 
     try:
 
-        for row in rows:
+        for index, row in enumerate(rows, start=1):
+
+            if index % PROGRESS_STEP == 0:
+                progress.report(TRANSLATE_JOB, index, total)
 
             source_text = row.source_text
 
@@ -258,6 +285,13 @@ def translate_pending():
     finally:
         # 不要把这个缓存留给后续的单条翻译请求
         translator.prime(None)
+        progress.clear(TRANSLATE_JOB)
+
+    if translated_count:
+        # 译好的条目直接发布到站点，不需要用户再点一次「导出到站点」。
+        # language 传 None：translate_pending 不按语言过滤，所以按各条
+        # 自己的 language 分组发布。
+        export_to_site(language=None, app_name=app_name, overwrite=True)
 
     print(f"Translated: {translated_count}")
     print(f"Rejected/Pending: {rejected_count}")

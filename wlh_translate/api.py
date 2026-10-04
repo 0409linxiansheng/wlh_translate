@@ -1,8 +1,11 @@
 import frappe
 from frappe.utils.background_jobs import get_job, get_job_status, is_job_enqueued
 
+from wlh_translate.auditor import auditor
 from wlh_translate.exporter import exporter
 from wlh_translate.importer import csv_importer
+from wlh_translate.patcher import patcher
+from wlh_translate.utils import progress
 from wlh_translate.utils.language import DEFAULT_LANGUAGE, normalize_language
 
 
@@ -29,6 +32,8 @@ JOB_NAMES = (
     "translate_pending_entries",
     "import_existing_translations",
     "export_translations_to_site",
+    patcher.PATCH_JOB,
+    auditor.AUDIT_JOB,
 )
 
 
@@ -60,41 +65,174 @@ def _enqueue(name, job_method, kwargs=None):
 
 
 @frappe.whitelist()
-def scan_all_apps():
-    """Scan every installed app for translation resources."""
+def scan_all_apps(app_name=None):
+    """
+    Scan installed apps for translation resources.
+
+    Pass "app_name" to refresh a single app, which is what the picker in the
+    list view does after somebody installs an app.
+    """
     return _enqueue(
         "scan_all_apps",
         "wlh_translate.scanner.scanner.scan_all",
+        {"app_name": app_name},
     )
 
 
 @frappe.whitelist()
-def translate_pending_entries():
+def translate_pending_entries(app_name=None):
     """Translate every Pending entry with the dictionary translator."""
     return _enqueue(
         "translate_pending_entries",
         "wlh_translate.translator.translator.translate_pending",
+        {"app_name": app_name},
     )
 
 
 @frappe.whitelist()
-def import_existing_translations(language=DEFAULT_LANGUAGE):
+def import_existing_translations(language=DEFAULT_LANGUAGE, app_name=None):
     """Fill empty Pending entries from the catalogues apps already ship."""
     return _enqueue(
         "import_existing_translations",
         "wlh_translate.importer.po_importer.import_from_po",
-        {"language": language},
+        {"language": language, "app_name": app_name},
     )
 
 
 @frappe.whitelist()
-def export_translations_to_site(language=DEFAULT_LANGUAGE):
+def export_translations_to_site(language=DEFAULT_LANGUAGE, app_name=None):
     """Publish finished translations to the site's Translation doctype."""
     return _enqueue(
         "export_translations_to_site",
         "wlh_translate.exporter.exporter.export_to_site",
-        {"language": language},
+        {"language": language, "app_name": app_name},
     )
+
+
+# ============================================================
+# Upstream patches
+# ============================================================
+#
+# Some text is hard coded in a frontend component - often inside a shared npm
+# package - and rendered verbatim, so no Translation entry can reach it. The
+# only way out is to edit that source and compile the bundle again. Each such
+# edit is kept in the patcher library as a replayable diff; these methods are
+# what the list view uses to see them and to replay one.
+
+
+@frappe.whitelist()
+def list_upstream_patches(app_name=None):
+    """
+    Describe every patch the library holds for an installed app.
+
+    Patches for apps that are not installed are left out: applying one would
+    fail with a missing file, and the list is meant to be actionable.
+    """
+    frappe.only_for("System Manager")
+
+    installed = set(frappe.get_installed_apps())
+
+    return [
+        row
+        for row in patcher.list_patches(app_name)
+        if row["app_name"] in installed
+    ]
+
+
+def _enqueue_patch(app_name, action, patch_name=None):
+    if not app_name:
+        frappe.throw("An app is required to patch or rebuild a frontend")
+
+    if app_name not in frappe.get_installed_apps():
+        frappe.throw(f"App {app_name!r} is not installed on this site")
+
+    return _enqueue(
+        patcher.PATCH_JOB,
+        "wlh_translate.patcher.patcher.patch_job",
+        {"app_name": app_name, "action": action, "patch_name": patch_name},
+    )
+
+
+@frappe.whitelist()
+def apply_upstream_patch(app_name, patch_name):
+    """Apply one patch and compile the app's frontend again."""
+    frappe.only_for("System Manager")
+
+    return _enqueue_patch(app_name, "apply", patch_name)
+
+
+@frappe.whitelist()
+def revert_upstream_patch(app_name, patch_name):
+    """Put the file the package shipped back, then compile again."""
+    frappe.only_for("System Manager")
+
+    return _enqueue_patch(app_name, "revert", patch_name)
+
+
+@frappe.whitelist()
+def rebuild_frontend(app_name):
+    """
+    Compile an app's frontend bundle without touching its sources.
+
+    A patch is only visible in the browser once the bundle is built again,
+    and a build can be interrupted or run before something else changed;
+    this is the way to redo it on its own.
+    """
+    frappe.only_for("System Manager")
+
+    return _enqueue_patch(app_name, "rebuild")
+
+
+# ============================================================
+# Untranslated text audit
+# ============================================================
+
+
+@frappe.whitelist()
+def audit_app(app_name, include_dependencies=False):
+    """
+    List the text an app renders that no translation can ever reach.
+
+    This is the counterpart of the scan: the scan finds what the app already
+    declares as translatable, the audit finds hard coded literals and plain
+    template text that bypass the translation table entirely. The result is
+    a file:line worklist, and each row is a candidate for an upstream patch.
+    """
+    frappe.only_for("System Manager")
+
+    return _enqueue(
+        auditor.AUDIT_JOB,
+        "wlh_translate.auditor.auditor.audit_app",
+        {
+            "app_name": app_name,
+            "include_dependencies": frappe.utils.cint(include_dependencies),
+        },
+    )
+
+
+@frappe.whitelist()
+def get_installed_apps():
+    """
+    Return the installed apps and how many entries each already has.
+
+    The list view builds its app picker from this. It has to come from the
+    server: frappe.boot carries no installed app list, and an app that was
+    installed a moment ago has no entries to infer its name from.
+    """
+    frappe.only_for("System Manager")
+
+    counts = {
+        row["value"]: row["count"]
+        for row in _group_count("app_name")
+    }
+
+    return [
+        {
+            "app_name": app,
+            "entries": counts.get(app, 0),
+        }
+        for app in frappe.get_installed_apps()
+    ]
 
 
 @frappe.whitelist()
@@ -115,6 +253,15 @@ def get_job_state(name):
         return {"job": name, "status": "idle"}
 
     state = {"job": name, "status": status.value}
+
+    if status.value in ("queued", "started"):
+        # A running job publishes how far it has come in the cache, because
+        # the worker and this request are different processes. Nothing is
+        # reported once it ends, so a finished job has no "progress" key.
+        running_progress = progress.read(name)
+
+        if running_progress:
+            state["progress"] = running_progress
 
     job = get_job(name)
 

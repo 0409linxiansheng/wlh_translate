@@ -3,6 +3,8 @@ from babel.messages.mofile import read_mo
 
 from frappe.gettext.translate import get_catalog, get_mo_path
 
+from wlh_translate.exporter.exporter import export_to_site
+from wlh_translate.utils import progress
 from wlh_translate.utils.language import (
     DEFAULT_LANGUAGE,
     language_aliases,
@@ -25,6 +27,12 @@ from wlh_translate.utils.language import (
 BATCH_SIZE = 500
 
 DEFAULT_SOURCE_APPS = ("erpnext", "frappe")
+
+# 进度上报使用的任务 id，与 wlh_translate.api.import_existing_translations 入队时一致。
+IMPORT_JOB = "import_existing_translations"
+
+# 每检查这么多条上报一次进度。逐条上报的写入开销比检查本身还大。
+PROGRESS_STEP = 200
 
 
 def _catalog_to_dict(catalog):
@@ -135,14 +143,16 @@ def import_from_po(
     apps=DEFAULT_SOURCE_APPS,
     language=DEFAULT_LANGUAGE,
     limit=None,
+    app_name=None,
 ):
     """
-    Fill empty Pending entries from the translations an app already ships.
+    从应用自带的译文里，填充还空着的 Pending 条目。
 
     Args:
         apps: apps whose catalogues are used as the memory base
         language: language code to import
         limit: maximum number of Translation Entry rows to read
+        app_name: limit to the entries of one scanned app
 
     Returns a summary dict.
     """
@@ -172,22 +182,35 @@ def import_from_po(
             "pending": 0,
         }
 
+    pending_filters = {
+        "status": "Pending",
+        "language": ["in", language_aliases(target_language)],
+    }
+
+    if app_name:
+        pending_filters["app_name"] = app_name
+
     pending = frappe.get_all(
         "Translation Entry",
-        filters={
-            "status": "Pending",
-            "language": ["in", language_aliases(target_language)],
-        },
+        filters=pending_filters,
         fields=["name", "source_text", "translated_text"],
         limit_page_length=limit,
     )
 
-    print(f"{len(pending)} pending entries to check")
+    total = len(pending)
+
+    print(f"{total} pending entries to check")
+
+    progress.report(IMPORT_JOB, 0, total)
 
     updates = []
     matched = 0
 
-    for row in pending:
+    for index, row in enumerate(pending, start=1):
+
+        if index % PROGRESS_STEP == 0:
+            progress.report(IMPORT_JOB, index, total)
+
         if str(row.translated_text or "").strip():
             continue
 
@@ -208,6 +231,17 @@ def import_from_po(
         matched += len(updates)
 
     frappe.db.commit()
+
+    if matched:
+        # 导入完直接发布，导入的译文不该还要用户再点一次「导出到站点」。
+        # overwrite=False：只补站点上还没有的，绝不覆盖已有译文。
+        export_to_site(
+            language=target_language,
+            app_name=app_name,
+            overwrite=False,
+        )
+
+    progress.clear(IMPORT_JOB)
 
     print("-" * 70)
     print(f"Catalogue entries    : {len(translations)}")

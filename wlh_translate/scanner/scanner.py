@@ -1,6 +1,8 @@
 import csv
+import functools
 import hashlib
 import html
+import io
 import json
 import os
 import re
@@ -9,6 +11,7 @@ import frappe
 from frappe.utils import strip_html
 
 from wlh_translate.importer.po_importer import _apply_updates, iter_catalogue
+from wlh_translate.utils import progress
 from wlh_translate.utils.language import DEFAULT_LANGUAGE
 
 
@@ -24,6 +27,11 @@ MAX_CONTEXT_LENGTH = 140
 
 # Batch size for the bulk SQL helpers.
 BULK_CHUNK_SIZE = 500
+
+# Job id this scanner reports its progress under. It matches the name
+# wlh_translate.api.scan_all_apps enqueues the job with, so the list view can
+# poll one place for the progress of a running scan.
+SCAN_JOB = "scan_all_apps"
 
 IGNORED_DIRS = {
     ".git",
@@ -62,9 +70,20 @@ IGNORED_SETUP_WIZARD_KEYS = {
     "must_be_whole_number",
 }
 
+# Files carrying explicit translation calls. The Vue and TypeScript
+# extensions matter as much as .js does: apps built on Vue 3 keep their
+# strings in .vue and .ts files, and leaving those out silently drops
+# everything such an app declares in its components. They are all
+# reported as "JS" because they use the JavaScript call syntax.
 SOURCE_EXTENSIONS = {
     ".py": "Python",
     ".js": "JS",
+    ".mjs": "JS",
+    ".cjs": "JS",
+    ".jsx": "JS",
+    ".ts": "JS",
+    ".tsx": "JS",
+    ".vue": "JS",
     ".html": "HTML",
     ".htm": "HTML",
     ".jinja": "HTML",
@@ -125,6 +144,12 @@ TRANSLATION_PATTERNS = [
     ),
     re.compile(
         rf"(?<![\w.])_\(\s*({_STRING_LITERAL})",
+        re.DOTALL,
+    ),
+    # _lt() translates lazily and N_() only marks a string for extraction.
+    # Both reach the catalogue, so both are translation resources.
+    re.compile(
+        rf"(?<![\w.])(?:_lt|N_)\(\s*({_STRING_LITERAL})",
         re.DOTALL,
     ),
 ]
@@ -1245,20 +1270,117 @@ def _refresh_last_seen(names):
 # App scanner
 # ============================================================
 
-def scan_app(app):
+def app_source_root(app):
+    """
+    Return the directory a scan has to walk for one app.
+
+    frappe.get_app_path() points at the Python package (<app>/<app>), which
+    holds the server side only. An app built on Vue or a modern frontend keeps
+    its strings in sibling directories of the repository root ("desk/",
+    "frontend/", "ui/"), so walking the package alone silently misses them.
+    The repository root covers both.
+
+    os.walk does not follow symlinks, which is what keeps a vendored copy of
+    another package (helpdesk/frappe-ui -> node_modules/frappe-ui) out.
+    """
+    return os.path.dirname(frappe.get_app_path(app))
+
+
+def iter_app_files(app_path):
+    """
+    Yield every file a scan walks through, in os.walk order.
+
+    Shared by the scan itself and by the progress pre-count, so the two
+    cannot drift apart when an ignore rule changes.
+    """
+    for root, dirs, files in os.walk(app_path):
+
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in IGNORED_DIRS
+        ]
+
+        for filename in files:
+
+            if filename.endswith(IGNORED_FILE_SUFFIXES):
+                continue
+
+            yield os.path.join(
+                root,
+                filename,
+            )
+
+
+def scan_one_file(app, filepath):
+    """
+    Scan a single file and return how many new resources it produced.
+
+    The dispatch lives here rather than inline in scan_app() so both stay
+    readable and so a caller can reuse the exact same rules on one file.
+    """
+    filename = os.path.basename(filepath)
+
+    # Existing Frappe translation CSV.
+    if (
+        filename.endswith(".csv")
+        and "translations" in filepath.split(os.sep)
+    ):
+        return scan_translation_csv(
+            app,
+            filepath,
+        )
+
+    extension = os.path.splitext(filename)[1].lower()
+
+    # JSON metadata.
+    if extension == ".json":
+        if filename.startswith(IGNORED_JSON_FILE_PREFIXES):
+            return 0
+
+        if is_setup_wizard_data(os.path.dirname(filepath)):
+            # Seed data holds user-facing values in plain strings
+            # (uom_name, industries, ...) that scan_json ignores.
+            return scan_setup_wizard_data(
+                app,
+                filepath,
+            )
+
+        return scan_json(
+            app,
+            filepath,
+        )
+
+    # Explicit translation calls.
+    if extension in SOURCE_EXTENSIONS:
+        return scan_source_file(
+            app,
+            filepath,
+            SOURCE_EXTENSIONS[extension],
+        )
+
+    return 0
+
+
+def scan_app(app, on_file=None):
     """
     Scan one installed Frappe app.
+
+    "on_file" is called after every visited file with the number of files
+    handled so far. A caller driving a long scan can report its progress
+    through it without knowing anything about the files.
     """
     print(f"Scanning app: {app}")
 
     try:
-        app_path = frappe.get_app_path(app)
+        app_path = app_source_root(app)
     except Exception as exc:
         print(f"  [APP PATH ERROR] {app}: {exc}")
         return {
             "app": app,
             "created": 0,
             "errors": 1,
+            "files": 0,
         }
 
     if not os.path.isdir(app_path):
@@ -1267,10 +1389,12 @@ def scan_app(app):
             "app": app,
             "created": 0,
             "errors": 1,
+            "files": 0,
         }
 
     created = 0
     errors_before = 0
+    files_done = 0
 
     # Record the beginning of this scan.
     #
@@ -1300,87 +1424,36 @@ def scan_app(app):
         except Exception:
             pass
 
-    for root, dirs, files in os.walk(app_path):
+    for filepath in iter_app_files(app_path):
 
-        dirs[:] = [
-            d
-            for d in dirs
-            if d not in IGNORED_DIRS
-        ]
+        files_done += 1
 
-        for filename in files:
+        try:
 
-            if filename.endswith(IGNORED_FILE_SUFFIXES):
-                continue
+            # A per-file savepoint keeps one broken file from discarding
+            # every row already inserted for this app in this scan.
+            frappe.db.savepoint("wlh_translate_file")
 
-            filepath = os.path.join(
-                root,
-                filename,
-            )
+            created += scan_one_file(app, filepath)
+
+        except Exception as exc:
+            errors_before += 1
+
+            print("")
+            print("  [FILE ERROR]")
+            print(f"    app  : {app}")
+            print(f"    file : {filepath}")
+            print(f"    error: {type(exc).__name__}: {exc}")
+            print("    continuing...")
+            print("")
 
             try:
+                frappe.db.rollback(save_point="wlh_translate_file")
+            except Exception:
+                pass
 
-                # A per-file savepoint keeps one broken file from discarding
-                # every row already inserted for this app in this scan.
-                frappe.db.savepoint("wlh_translate_file")
-
-                # Existing Frappe translation CSV.
-                if (
-                    filename.endswith(".csv")
-                    and "translations" in root.split(os.sep)
-                ):
-                    created += scan_translation_csv(
-                        app,
-                        filepath,
-                    )
-                    continue
-
-                extension = os.path.splitext(
-                    filename
-                )[1].lower()
-
-                # JSON metadata.
-                if extension == ".json":
-                    if filename.startswith(IGNORED_JSON_FILE_PREFIXES):
-                        continue
-
-                    if is_setup_wizard_data(root):
-                        # Seed data holds user-facing values in plain strings
-                        # (uom_name, industries, ...) that scan_json ignores.
-                        created += scan_setup_wizard_data(
-                            app,
-                            filepath,
-                        )
-                    else:
-                        created += scan_json(
-                            app,
-                            filepath,
-                        )
-                    continue
-
-                # Explicit translation calls.
-                if extension in SOURCE_EXTENSIONS:
-                    created += scan_source_file(
-                        app,
-                        filepath,
-                        SOURCE_EXTENSIONS[extension],
-                    )
-
-            except Exception as exc:
-                errors_before += 1
-
-                print("")
-                print("  [FILE ERROR]")
-                print(f"    app  : {app}")
-                print(f"    file : {filepath}")
-                print(f"    error: {type(exc).__name__}: {exc}")
-                print("    continuing...")
-                print("")
-
-                try:
-                    frappe.db.rollback(save_point="wlh_translate_file")
-                except Exception:
-                    pass
+        if on_file is not None:
+            on_file(files_done)
 
     print(
         f"  {app}: {created} new translation resources"
@@ -1429,6 +1502,7 @@ def scan_app(app):
         "app": app,
         "created": created,
         "errors": errors_before,
+        "files": files_done,
     }
 
 
@@ -1441,6 +1515,8 @@ def scan_source_file(app, filepath, source_type):
         __()
         frappe._()
         _()
+        _lt()
+        N_()
 
     Ordinary English strings are NOT treated as translation resources.
     """
@@ -1456,35 +1532,23 @@ def scan_source_file(app, filepath, source_type):
     except OSError:
         raise
 
+    if source_type == "Python":
+        occurrences = _babel_occurrences(content)
+    else:
+        occurrences = _regex_occurrences(content)
+
     count = 0
 
-    matches = []
-
-    for pattern in TRANSLATION_PATTERNS:
-        matches.extend(pattern.finditer(content))
-
-    # Sort by actual source position so occurrence identity is stable.
-    matches.sort(key=lambda match: match.start())
-
-    for occurrence_index, match in enumerate(matches, start=1):
-        try:
-            literal = match.group(1)
-        except (IndexError, AttributeError):
-            continue
-
-        # The stored key must equal the value the running code passes to _(),
-        # so the escape sequences are resolved here.
-        text = unescape_literal(literal)
-
+    for occurrence_index, (line_number, text) in enumerate(
+        occurrences,
+        start=1,
+    ):
         if not text:
             continue
 
         # Ignore obvious non-human / structural values.
         if not has_human_text(text):
             continue
-
-        # Calculate the source line number.
-        line_number = content.count("\n", 0, match.start()) + 1
 
         context = (
             f"translation_call:{occurrence_index}"
@@ -1502,13 +1566,121 @@ def scan_source_file(app, filepath, source_type):
 
     return count
 
+
+def _regex_occurrences(content):
+    """
+    Return (line_number, text) for every translation call a pattern finds.
+
+    This is the JavaScript and template side: .js, .ts and .vue files carry
+    translation calls next to template text, and no JavaScript parser knows
+    about the template half, so a pattern is what has to look for them.
+
+    The stored key must equal the value the running code passes to _(), so
+    the escape sequences inside the literal are resolved here.
+    """
+    matches = []
+
+    for pattern in TRANSLATION_PATTERNS:
+        matches.extend(pattern.finditer(content))
+
+    # Sort by actual source position so occurrence identity is stable.
+    matches.sort(key=lambda match: match.start())
+
+    occurrences = []
+
+    for match in matches:
+        try:
+            literal = match.group(1)
+        except (IndexError, AttributeError):
+            continue
+
+        text = unescape_literal(literal)
+
+        if not text:
+            continue
+
+        occurrences.append(
+            (content.count("\n", 0, match.start()) + 1, text)
+        )
+
+    return occurrences
+
+
+def _babel_occurrences(content):
+    """
+    Return (line_number, message) for every translation call in Python code.
+
+    babel parses the file rather than matching a pattern against it, which
+    settles three things a pattern either gets wrong or misses:
+
+        _("a" "b")      one message, not just "a": the parts of an
+                        implicitly concatenated string are joined
+        # _("x")        not a call at all: comments are not scanned
+        _lt() / N_()    recognised next to _()
+    """
+    from babel.messages.extract import extract_python
+
+    occurrences = []
+
+    for message in extract_python(
+        io.BytesIO(content.encode("utf-8")),
+        keywords=["_", "_lt", "N_"],
+        comment_tags=(),
+        options={},
+    ):
+        line_number, _func, args, _comments = message
+
+        if not args or not args[0]:
+            continue
+
+        text = args[0] if isinstance(args, tuple) else args
+
+        if not isinstance(text, str) or not text:
+            continue
+
+        occurrences.append((line_number, text))
+
+    # babel reports in discovery order; sorting on the line gives the same
+    # occurrence numbering as _regex_occurrences().
+    occurrences.sort(key=lambda item: item[0])
+
+    return occurrences
+
 # ============================================================
 # All installed apps
 # ============================================================
 
-def scan_all():
+def _report_scan_progress(
+    files_in_app,
+    app,
+    app_index,
+    app_total,
+    files_before,
+    files_total,
+):
     """
-    Scan every app installed on the current Frappe site.
+    Publish how far the scan has come, one app at a time.
+
+    Wired into scan_app() as its "on_file" callback. Only files already
+    visited count, so the percentage never claims more than was done.
+    """
+    progress.report(
+        SCAN_JOB,
+        files_before + files_in_app,
+        files_total,
+        app_name=app,
+        app_index=app_index,
+        app_total=app_total,
+    )
+
+
+def scan_all(app_name=None):
+    """
+    Scan the apps installed on the current Frappe site.
+
+    When "app_name" is given only that app is scanned, which is what makes a
+    single app quick to refresh after installing something. The progress of
+    the run is published under the job id the list view polls.
 
     Existing Translation Entry records are preserved.
     """
@@ -1516,28 +1688,84 @@ def scan_all():
     print("WLH Translate Resource Scanner V2")
     print("=" * 70)
 
-    apps = frappe.get_installed_apps()
+    installed = frappe.get_installed_apps()
+
+    if app_name:
+        if app_name not in installed:
+            frappe.throw(
+                f"App {app_name!r} is not installed on this site"
+            )
+
+        apps = [app_name]
+    else:
+        apps = installed
 
     print("Installed apps:")
     for app in apps:
         print(f"  - {app}")
 
-    total_created = 0
-    total_errors = 0
-    results = []
+    # Counting the files up front is what makes a percentage possible while
+    # the scan runs. Only directory names and extensions are looked at here,
+    # no file is read.
+    files_per_app = {}
 
     for app in apps:
-        result = scan_app(app)
+        try:
+            files_per_app[app] = sum(
+                1 for _ in iter_app_files(app_source_root(app))
+            )
+        except Exception as exc:
+            print(f"  [APP PATH ERROR] {app}: {exc}")
+            files_per_app[app] = 0
 
-        results.append(result)
+    files_total = sum(files_per_app.values())
 
-        total_created += result.get("created", 0)
-        total_errors += result.get("errors", 0)
+    print(f"Files to visit     : {files_total}")
 
-        # Commit each app separately.
-        # This prevents one later app from rolling back everything
-        # discovered in earlier apps.
-        frappe.db.commit()
+    total_created = 0
+    total_errors = 0
+    files_done = 0
+    results = []
+
+    # Drop any progress left behind by an earlier run before the first file
+    # is visited, so the status bar cannot show a stale percentage.
+    progress.clear(SCAN_JOB)
+
+    try:
+        for app_index, app in enumerate(apps, start=1):
+
+            on_file = functools.partial(
+                _report_scan_progress,
+                app=app,
+                app_index=app_index,
+                app_total=len(apps),
+                files_before=files_done,
+                files_total=files_total,
+            )
+
+            result = scan_app(app, on_file=on_file)
+
+            results.append(result)
+
+            files_done += result.get("files", 0)
+            total_created += result.get("created", 0)
+            total_errors += result.get("errors", 0)
+
+            progress.report(
+                SCAN_JOB,
+                files_done,
+                files_total,
+                app_name=app,
+                app_index=app_index,
+                app_total=len(apps),
+            )
+
+            # Commit each app separately.
+            # This prevents one later app from rolling back everything
+            # discovered in earlier apps.
+            frappe.db.commit()
+    finally:
+        progress.clear(SCAN_JOB)
 
     print("=" * 70)
     print(

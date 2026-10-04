@@ -26,7 +26,8 @@ add_to_apps_screen = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/wlh_translate/css/wlh_translate.css"
-# app_include_js = "/assets/wlh_translate/js/wlh_translate.js"
+# 列表首列记录名的翻译补丁，见 public/js/name_column_i18n.bundle.js
+app_include_js = ["name_column_i18n.bundle.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/wlh_translate/css/wlh_translate.css"
@@ -145,13 +146,15 @@ after_install = "wlh_translate.install.after_install"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+# An entry edited in the desk is written straight into the site's
+# "Translation" doctype, so the change shows up without running a full
+# export. Background jobs skip the hook and publish in bulk once, when the
+# job finishes.
+doc_events = {
+	"Translation Entry": {
+		"on_update": "wlh_translate.exporter.exporter.sync_entry_on_save"
+	}
+}
 
 # Scheduled Tasks
 # ---------------
