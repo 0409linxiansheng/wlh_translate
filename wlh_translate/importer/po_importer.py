@@ -28,6 +28,18 @@ BATCH_SIZE = 500
 
 DEFAULT_SOURCE_APPS = ("erpnext", "frappe")
 
+# 官方 .po 是各应用自己维护的译文，作为术语的权威来源。两个应用对同一个
+# 源文本给出不同译名时，顺序在前者优先 —— 核心应用的术语更标准。
+CATALOGUE_PRIORITY = (
+    "erpnext",
+    "frappe",
+    "hrms",
+    "helpdesk",
+    "lms",
+    "builder",
+    "wiki",
+)
+
 # 进度上报使用的任务 id，与 wlh_translate.api.import_existing_translations 入队时一致。
 IMPORT_JOB = "import_existing_translations"
 
@@ -112,6 +124,72 @@ def iter_catalogue(app, language):
             continue
 
         yield msgid, str(string or "").strip()
+
+
+def load_catalogue(language=DEFAULT_LANGUAGE, apps=CATALOGUE_PRIORITY):
+    """
+    Merge several apps' official translations into one {msgid: msgstr} map.
+
+    Where two apps translate the same source text differently, the one earlier
+    in CATALOGUE_PRIORITY wins.
+    """
+    # 应用自带的 translations/<lang>.csv 也是应用自己声明的译文，作为兜底：
+    # 官方 .po 通常更完整，同名条目由后面的合并覆盖。
+    merged = _load_csv_catalogue(language, apps)
+
+    # 反向遍历，让高优先级的应用最后写入、覆盖低优先级的值。
+    for app in reversed(apps):
+        try:
+            messages = list(iter_catalogue(app, language))
+        except Exception:
+            continue
+
+        for msgid, translated in messages:
+            msgid = (msgid or "").strip()
+            translated = (translated or "").strip()
+
+            if msgid and translated:
+                merged[msgid] = translated
+
+    return merged
+
+
+def _load_csv_catalogue(language, apps):
+    """Read <app>/translations/<lang>.csv for every installed app that ships one.
+
+    Priority apps come first and their value wins; the remaining apps only fill
+    what is still unknown.
+    """
+    import csv
+    import os
+
+    ordered = list(apps) + [
+        app for app in frappe.get_installed_apps() if app not in apps
+    ]
+
+    merged = {}
+
+    for app in ordered:
+        path = os.path.join(
+            frappe.get_app_path(app, "translations"),
+            f"{language}.csv",
+        )
+
+        if not os.path.exists(path):
+            continue
+
+        with open(path, encoding="utf-8-sig", newline="") as handle:
+            for row in csv.reader(handle):
+                if len(row) < 2:
+                    continue
+
+                msgid = (row[0] or "").strip()
+                translated = (row[1] or "").strip()
+
+                if msgid and translated:
+                    merged.setdefault(msgid, translated)
+
+    return merged
 
 
 def load_app_translations(app, language):

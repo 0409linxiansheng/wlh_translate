@@ -1,25 +1,8 @@
-import re
-
 import frappe
 
-from wlh_translate.utils.language import DEFAULT_LANGUAGE
-
-
-# 译文里完全没有中日韩字符，却与原文不同 —— 典型的外语串入
-# （历史 CSV 导入事故把西班牙语写进了中文条目）。
-CJK = re.compile(r"[\u4e00-\u9fff]")
-
-# 官方 .po 是各应用自己发布的译文，作为权威来源。
-# 顺序在前者优先，核心应用的术语更标准。
-CATALOGUE_PRIORITY = (
-    "erpnext",
-    "frappe",
-    "hrms",
-    "helpdesk",
-    "lms",
-    "builder",
-    "wiki",
-)
+from wlh_translate.exporter.exporter import apply_translation
+from wlh_translate.importer.po_importer import load_catalogue
+from wlh_translate.utils.language import has_cjk
 
 
 # 官方 .po 里没有对应 msgstr 的残留外语条目（主要是 lms 的西班牙语），
@@ -76,7 +59,7 @@ MANUAL_FIXES = {
 
 
 def execute():
-    catalogue = _load_catalogue()
+    catalogue = load_catalogue()
 
     repaired = _repair_leaks(catalogue)
 
@@ -86,57 +69,6 @@ def execute():
     frappe.clear_cache()
 
     print(f"fix_leaked_translations: repaired {repaired}")
-
-
-def _load_catalogue():
-    """把各应用官方 .po 的 msgid -> msgstr 合并成一张表。"""
-    from wlh_translate.importer.po_importer import iter_catalogue
-
-    merged = {}
-
-    # 反向遍历，让高优先级的应用最后写入、覆盖低优先级的值。
-    for app in reversed(CATALOGUE_PRIORITY):
-        try:
-            messages = list(iter_catalogue(app, DEFAULT_LANGUAGE))
-        except Exception:
-            continue
-
-        for msgid, translated in messages:
-            msgid = (msgid or "").strip()
-            translated = (translated or "").strip()
-
-            if msgid and translated:
-                merged[msgid] = translated
-
-    return merged
-
-
-def _apply(source_text, translated_text):
-    """把权威译文写回工作单与 "Translation" 表。"""
-    from wlh_translate.exporter.exporter import publish_one
-
-    for row in frappe.get_all(
-        "Translation Entry",
-        filters={"source_text": source_text, "is_translatable": 1},
-        pluck="name",
-    ):
-        frappe.db.set_value(
-            "Translation Entry",
-            row,
-            {
-                "translated_text": translated_text,
-                "status": "Translated",
-                "translation_source": "Manual",
-            },
-            update_modified=False,
-        )
-
-    publish_one(
-        DEFAULT_LANGUAGE,
-        source_text,
-        translated_text,
-        overwrite=True,
-    )
 
 
 def _repair_leaks(catalogue):
@@ -160,20 +92,20 @@ def _repair_leaks(catalogue):
         if not source or not translated or source == translated:
             continue
 
-        if CJK.search(translated):
+        if has_cjk(translated):
             continue
 
         good = catalogue.get(source)
 
         # 官方 .po 偶尔也会给出不含中文的坏译文（例如 "Hi {0}" -> "{0}"），
         # 这时以手工表为准。
-        if not good or not CJK.search(good):
+        if not good or not has_cjk(good):
             good = MANUAL_FIXES.get(source) or good
 
-        if good and CJK.search(good):
+        if good and has_cjk(good):
             targets[source] = good
 
     for source, good in targets.items():
-        _apply(source, good)
+        apply_translation(source, good)
 
     return len(targets)

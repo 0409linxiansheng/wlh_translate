@@ -465,6 +465,40 @@ def publish_one(language, source_text, translated_text, overwrite=True):
     return "inserted"
 
 
+def apply_translation(source_text, translated_text, overwrite=True):
+    """
+    Force one translated text onto every entry carrying a source text, and
+    publish it.
+
+    Unlike sync_entry_on_save() this ignores the per-entry status and text: it
+    is meant for patches correcting a whole source text at once, where the new
+    text has been checked against an authoritative catalogue.
+    """
+    for row in frappe.get_all(
+        "Translation Entry",
+        filters={"source_text": source_text, "is_translatable": 1},
+        pluck="name",
+        limit_page_length=0,
+    ):
+        frappe.db.set_value(
+            "Translation Entry",
+            row,
+            {
+                "translated_text": translated_text,
+                "status": "Translated",
+                "translation_source": "Manual",
+            },
+            update_modified=False,
+        )
+
+    return publish_one(
+        DEFAULT_LANGUAGE,
+        source_text,
+        translated_text,
+        overwrite=overwrite,
+    )
+
+
 def sync_entry_on_save(doc, method=None):
     """
     Document hook: publish an entry the moment it is saved from the desk.

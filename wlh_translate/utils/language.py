@@ -1,9 +1,22 @@
+import re
+
 import frappe
 
 
 # Default target language for scanned resources. This must be a language code
 # known to Frappe ("zh" for Simplified Chinese, not "zh-CN").
 DEFAULT_LANGUAGE = "zh"
+
+
+# CJK Unified Ideographs. Used to tell a real Chinese translation from a value
+# that only looks translated (a stray Spanish string, or the source echoed
+# back).
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def has_cjk(text):
+	"""Whether a string contains at least one Chinese character."""
+	return bool(_CJK_RE.search(str(text or "")))
 
 
 # Frappe identifies languages with its own codes ("zh", "zh-TW"), not with
