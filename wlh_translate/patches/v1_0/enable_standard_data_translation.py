@@ -67,7 +67,21 @@ TRANSLATED_DOCTYPES = (
 	# hrms
 	"Job Applicant Source",
 	"Offer Term",
+	# lms：行业、职能、课程分类与来源
+	"Industry",
+	"Function",
+	"LMS Category",
+	"LMS Source",
+	# builder：区块模板
+	"Block Template",
 )
+
+# 已存在的错误译名。MISSING_TRANSLATIONS 只补空缺，盖不掉这些，所以单独列出
+# 并允许覆盖。
+CORRECTIONS = {
+	# builder 区块模板名，源自 .po 的误译，应为品牌原名
+	"YouTube": "YouTube",
+}
 
 # 缺失的中文译名。
 #
@@ -487,12 +501,16 @@ MISSING_TRANSLATIONS = {
 def execute():
 	added = ensure_translated_doctypes()
 	published = publish_missing_translations()
+	corrected = apply_corrections()
 
-	if added or published:
+	if added or published or corrected:
 		frappe.db.commit()
 
 	frappe.clear_cache()
-	print(f"translated_doctype: +{added}, translations: +{published}")
+	print(
+		f"translated_doctype: +{added}, translations: +{published}, "
+		f"corrections: {corrected}"
+	)
 
 
 def ensure_translated_doctypes():
@@ -548,3 +566,20 @@ def publish_missing_translations():
 			published += 1
 
 	return published
+
+
+def apply_corrections():
+	"""覆盖已存在的错误译名，返回修正条数。"""
+	from wlh_translate.exporter.exporter import publish_one
+	from wlh_translate.utils.language import DEFAULT_LANGUAGE
+
+	corrected = 0
+
+	for source_text, translated_text in CORRECTIONS.items():
+		if publish_one(DEFAULT_LANGUAGE, source_text, translated_text, overwrite=True) in (
+			"inserted",
+			"overwritten",
+		):
+			corrected += 1
+
+	return corrected
