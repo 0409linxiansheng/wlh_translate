@@ -27,7 +27,11 @@ add_to_apps_screen = [
 # include js, css files in header of desk.html
 # app_include_css = "/assets/wlh_translate/css/wlh_translate.css"
 # 列表首列记录名的翻译补丁，见 public/js/name_column_i18n.bundle.js
-app_include_js = ["name_column_i18n.bundle.js"]
+# 框架未包 __() 的界面文案补译，见 public/js/unwrapped_text_i18n.bundle.js
+app_include_js = [
+	"name_column_i18n.bundle.js",
+	"unwrapped_text_i18n.bundle.js",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/wlh_translate/css/wlh_translate.css"
