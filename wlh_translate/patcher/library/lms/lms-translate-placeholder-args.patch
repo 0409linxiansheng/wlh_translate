@@ -1,0 +1,51 @@
+diff --git a/frontend/src/translation.js b/frontend/src/translation.js
+index f6b9050..b88f493 100644
+--- a/frontend/src/translation.js
++++ b/frontend/src/translation.js
+@@ -6,7 +6,7 @@ export default function translationPlugin(app) {
+ 	if (!window.translatedMessages) fetchTranslations()
+ }
+ 
+-function translate(message) {
++function translate(message, ...args) {
+ 	let translatedMessages = window.translatedMessages || {}
+ 	let translatedMessage = translatedMessages[message] || message
+ 
+@@ -14,18 +14,26 @@ function translate(message) {
+ 	if (!hasPlaceholders) {
+ 		return translatedMessage
+ 	}
+-	return {
+-		format: function (...args) {
+-			return translatedMessage.replace(
+-				/{(\d+)}/g,
+-				function (match, number) {
+-					return typeof args[number] != 'undefined'
+-						? args[number]
+-						: match
+-				}
+-			)
+-		},
++
++	const format = function (...values) {
++		return translatedMessage.replace(
++			/{(\d+)}/g,
++			function (match, number) {
++				return typeof values[number] != 'undefined'
++					? values[number]
++					: match
++			}
++		)
+ 	}
++
++	// frappe-ui 组件按 __(msg, a, b) 或 __(msg, [a, b]) 调用，本应用自己的
++	// 代码习惯 __(msg).format(a, b)。两种都要能用，否则含占位符的文案会被
++	// Vue 当成对象渲染成 "{}" 或 "[object Object]"。
++	if (args.length) {
++		return format(...args.flat())
++	}
++
++	return { format }
+ }
+ 
+ function fetchTranslations(lang) {
