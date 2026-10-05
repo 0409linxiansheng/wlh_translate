@@ -1,11 +1,9 @@
 [pre_model_sync]
 # Patches added in this section will be executed before doctypes are migrated
 # Read docs to understand patches: https://frappeframework.com/docs/v14/user/en/database-migrations
-
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 # Read docs to understand patches: https://frappeframework.com/docs/v14/user/en/database-migrations
-
 wlh_translate.patches.v1_0.normalize_language
 wlh_translate.patches.v1_0.mark_technical_entries
 wlh_translate.patches.v1_0.mark_seed_data_entries
@@ -19,3 +17,6 @@ wlh_translate.patches.v1_0.add_lms_remaining_translations
 wlh_translate.patches.v1_0.add_editor_translations
 wlh_translate.patches.v1_0.add_wiki_slash_translations
 wlh_translate.patches.v1_0.add_helpdesk_listview_translations
+wlh_translate.patches.v1_0.add_helpdesk_field_label_translations
+wlh_translate.patches.v1_0.add_helpdesk_kb_translations
+wlh_translate.patches.v1_0.add_helpdesk_helpcenter_translations

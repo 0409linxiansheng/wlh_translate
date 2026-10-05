@@ -1,0 +1,124 @@
+diff --git a/desk/src/components/frappe-ui/Autocomplete.vue b/desk/src/components/frappe-ui/Autocomplete.vue
+index 7a838ed..040a973 100644
+--- a/desk/src/components/frappe-ui/Autocomplete.vue
++++ b/desk/src/components/frappe-ui/Autocomplete.vue
+@@ -53,7 +53,7 @@
+                 "
+                 :value="query"
+                 autocomplete="off"
+-                placeholder="Search"
++                :placeholder="__('Search')"
+               />
+               <button
+                 class="absolute inset-y-0 end-3 top-px flex items-center"
+@@ -108,7 +108,7 @@
+                 v-if="groups.length == 0"
+                 class="mt-1.5 rounded-md px-2.5 py-1.5 text-base text-ink-gray-5"
+               >
+-                No results found
++                {{ __("No results found") }}
+               </li>
+             </ComboboxOptions>
+             <div
+@@ -136,6 +136,7 @@ import {
+ } from "@headlessui/vue";
+ import { Popover, Button, FeatherIcon } from "frappe-ui";
+ import { ref, computed, useAttrs, useSlots, watch, nextTick } from "vue";
++import { __ } from "@/translation";
+ 
+ const props = defineProps({
+   modelValue: {
+diff --git a/desk/src/components/knowledge-base/CategoryFolder.vue b/desk/src/components/knowledge-base/CategoryFolder.vue
+index 3f2e575..4a10385 100644
+--- a/desk/src/components/knowledge-base/CategoryFolder.vue
++++ b/desk/src/components/knowledge-base/CategoryFolder.vue
+@@ -17,7 +17,7 @@
+       </p>
+       <span class="truncate text-xs md:text-sm text-ink-gray-5">
+         {{ category?.article_count }}
+-        {{ category?.article_count % 2 === 1 ? "article" : "articles" }}
++        {{ category?.article_count % 2 === 1 ? __("article") : __("articles") }}
+       </span>
+     </div>
+   </router-link>
+@@ -25,6 +25,7 @@
+ 
+ <script setup lang="ts">
+ import { FeatherIcon } from "frappe-ui";
++import { __ } from "@/translation";
+ const props = defineProps({
+   category: {
+     required: true,
+diff --git a/desk/src/pages/knowledge-base/KnowledgeBaseCustomer.vue b/desk/src/pages/knowledge-base/KnowledgeBaseCustomer.vue
+index 8a55111..f42be4b 100644
+--- a/desk/src/pages/knowledge-base/KnowledgeBaseCustomer.vue
++++ b/desk/src/pages/knowledge-base/KnowledgeBaseCustomer.vue
+@@ -2,7 +2,7 @@
+   <div class="p-5 pb-10 px-10 w-full overflow-scroll items-center relative">
+     <LayoutHeader>
+       <template #left-header>
+-        <div class="text-lg-medium text-ink-gray-9">Knowledge Base</div>
++        <div class="text-lg-medium text-ink-gray-9">{{ __("Knowledge Base") }}</div>
+       </template>
+     </LayoutHeader>
+     <div
+@@ -13,7 +13,7 @@
+           'max-w-[310px] md:max-w-[856px] !top-1 md:min-w-[856px]',
+         ]"
+         v-model="query"
+-        placeholder="Ask a question..."
++        :placeholder="__('Ask a question...')"
+         size="md"
+         :autofocus="true"
+       />
+@@ -36,6 +36,7 @@ import { LayoutHeader } from "@/components";
+ import CategoryFolderContainer from "@/components/knowledge-base/CategoryFolderContainer.vue";
+ import SearchPopover from "@/components/SearchPopover.vue";
+ import { capture } from "@/telemetry";
++import { __ } from "@/translation";
+ 
+ const query = ref("");
+ 
+@@ -44,7 +45,7 @@ onMounted(() => {
+ });
+ usePageMeta(() => {
+   return {
+-    title: "Knowledge Base",
++    title: __("Knowledge Base"),
+   };
+ });
+ </script>
+diff --git a/helpdesk/api/doc.py b/helpdesk/api/doc.py
+index 7eedd82..f9ef866 100644
+--- a/helpdesk/api/doc.py
++++ b/helpdesk/api/doc.py
+@@ -389,6 +389,10 @@ def get_filterable_fields(
+     for field in standard_fields:
+         if field.get("fieldname") not in [r.get("fieldname") for r in res]:
+             res.append(field)
++
++    for field in res:
++        if field.get("label"):
++            field["label"] = _(field["label"])
+     return res
+ 
+ 
+@@ -418,6 +422,9 @@ def sort_options(doctype: str, show_customer_portal_fields: bool = False):
+ 
+     fields.extend(standard_fields)
+ 
++    for field in fields:
++        if field.get("label"):
++            field["label"] = _(field["label"])
+     return fields
+ 
+ 
+@@ -426,7 +433,7 @@ def get_quick_filters(doctype: str, show_customer_portal_fields: bool = False):
+     meta = frappe.get_meta(doctype)
+     fields = [field for field in meta.fields if field.in_standard_filter]
+     quick_filters = []
+-    name_filter = {"label": "ID", "name": "name", "type": "Data"}
++    name_filter = {"label": _("ID"), "name": "name", "type": "Data"}
+     if doctype == "Contact":
+         quick_filters.append(name_filter)
+         return quick_filters

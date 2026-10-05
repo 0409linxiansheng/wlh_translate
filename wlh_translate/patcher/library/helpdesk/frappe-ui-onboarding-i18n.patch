@@ -174,3 +174,61 @@
  const props = defineProps({
    isSidebarCollapsed: {
      type: Boolean,
+--- a/desk/node_modules/frappe-ui/src/components/Sidebar/SidebarCollapseToggle.vue
++++ b/desk/node_modules/frappe-ui/src/components/Sidebar/SidebarCollapseToggle.vue
+@@ -1,5 +1,8 @@
+ <template>
+-  <SidebarItem :label="isCollapsed ? 'Expand' : 'Collapse'" @click="toggle">
++  <SidebarItem
++    :label="isCollapsed ? __('Expand') : __('Collapse')"
++    @click="toggle"
++  >
+     <template #prefix>
+       <span
+         class="lucide-panel-right-open size-4 text-ink-gray-6 transition-transform duration-300 ease-in-out"
+@@ -14,6 +17,13 @@
+ import SidebarItem from './SidebarItem.vue'
+ import { sidebarCollapsedKey, sidebarToggleKey } from './types'
+ 
++// wlh_translate: the host desk owns the translation table. Look the function up
++// on window at call time so this does not depend on module evaluation order.
++const __ = (message: string, ...args: unknown[]) => {
++  const translate = (window as any).__
++  return translate ? translate(message, ...args) : message
++}
++
+ const isCollapsed = inject(
+   sidebarCollapsedKey,
+   computed(() => false),
+--- a/desk/node_modules/frappe-ui/frappe/HelpCenter/HelpCenter.vue
++++ b/desk/node_modules/frappe-ui/frappe/HelpCenter/HelpCenter.vue
+@@ -3,7 +3,7 @@
+     <div class="m-1">
+       <TextInput
+         ref="searchInput"
+-        :placeholder="'Search articles...'"
++        :placeholder="__('Search articles...')"
+         v-model="search"
+         :debounce="300"
+       >
+@@ -15,7 +15,7 @@
+     <div
+       class="flex justify-between items-center text-base text-ink-gray-5 mx-2"
+     >
+-      <div>All articles</div>
++      <div>{{ __('All articles') }}</div>
+       <Button variant="ghost" @click="openDocs">
+         <FeatherIcon name="arrow-up-right" class="h-4 text-ink-gray-5" />
+       </Button>
+@@ -67,6 +67,11 @@
+ import TextInput from '../../src/components/TextInput/TextInput.vue'
+ import { ref, computed, onMounted } from 'vue'
+ 
++// wlh_translate: the host app owns the translation table; look the function up
++// on window at call time so this does not depend on module evaluation order.
++const __ = (message, ...args) =>
++  (window.__ || ((msg) => msg))(message, ...args)
++
+ const props = defineProps({
+   docsLink: {
+     type: String,
