@@ -1,0 +1,88 @@
+diff --git a/desk/src/components/editor/config.ts b/desk/src/components/editor/config.ts
+index 898b99d..77f4a68 100644
+--- a/desk/src/components/editor/config.ts
++++ b/desk/src/components/editor/config.ts
+@@ -20,12 +20,39 @@ import {
+   InsertVideo,
+   InsertTable,
+   HorizontalRule,
+-  commentToolbar,
++  commentToolbar as commentToolbarRaw,
+   type MenuItem,
++  type MenuGroupItem,
+   type CommandMenuItem,
+ } from "frappe-ui/editor";
+ import type { MaybeRefOrGetter } from "vue";
+ import { CleanStyles, ComponentUtils, HandleExcelPaste } from "@/tiptap-extensions";
++import { __ } from "@/translation";
++
++/**
++ * frappe-ui renders toolbar labels as-is and ships them in English, so a
++ * toolbar built from its atoms stays English. Translate the labels here; the
++ * site translations are injected into `window.translatedMessages` before the
++ * bundle runs, so doing it at module load is safe.
++ */
++function translateItem(item: MenuItem): MenuItem {
++  if ("type" in item && item.type === "group") {
++    const group = item as MenuGroupItem;
++    return {
++      ...group,
++      label: __(group.label),
++      items: group.items.map((sub) => translateItem(sub) as CommandMenuItem),
++    };
++  }
++  if ("label" in item) {
++    return { ...(item as CommandMenuItem), label: __((item as CommandMenuItem).label) };
++  }
++  return item;
++}
++
++function translateItems(items: MenuItem[]): MenuItem[] {
++  return items.map(translateItem);
++}
+ 
+ /** A mentionable agent as the new editor expects it: `{ id, label }`. */
+ export interface MentionItem {
+@@ -58,14 +85,14 @@ export function buildEditorExtensions(options: {
+ 
+ /** Clear-formatting toolbar button (ports the v0 `ClearFormattingUtility`). */
+ export const ClearFormatting: CommandMenuItem = {
+-  label: "Clear formatting",
++  label: __("Clear formatting"),
+   icon: "lucide-brush-cleaning",
+   action: (editor) =>
+     editor.chain().focus().unsetAllMarks().clearNodes().cleanStyles().run(),
+ };
+ 
+ /** Full toolbar mirroring the v0 `textEditorMenuButtons`. */
+-export const fullToolbar: MenuItem[] = [
++export const fullToolbar: MenuItem[] = translateItems([
+   HeadingGroup,
+   Separator,
+   Bold,
+@@ -90,13 +117,13 @@ export const fullToolbar: MenuItem[] = [
+   HorizontalRule,
+   Separator,
+   ClearFormatting,
+-];
++]);
+ 
+ /**
+  * Curated toolbar for the new-ticket / base editor (ports the v0 `fixedMenu`).
+  * Kept compact so the toolbar + Discard/Submit fit on one row.
+  */
+-export const ticketToolbar: MenuItem[] = [
++export const ticketToolbar: MenuItem[] = translateItems([
+   Paragraph,
+   HeadingGroup,
+   Separator,
+@@ -112,7 +139,7 @@ export const ticketToolbar: MenuItem[] = [
+   Blockquote,
+   InlineCode,
+   ClearFormatting,
+-];
++]);
+ 
+ /** Compact bubble/inline toolbar for comment display + inline editing. */
+-export { commentToolbar };
++export const commentToolbar: MenuItem[] = translateItems(commentToolbarRaw);

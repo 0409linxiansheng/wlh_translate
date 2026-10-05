@@ -1,0 +1,111 @@
+diff --git a/frontend/src/components/tiptap-extensions/SlashCommandsList.vue b/frontend/src/components/tiptap-extensions/SlashCommandsList.vue
+index c6bd6c2..f9ebd71 100644
+--- a/frontend/src/components/tiptap-extensions/SlashCommandsList.vue
++++ b/frontend/src/components/tiptap-extensions/SlashCommandsList.vue
+@@ -14,7 +14,7 @@
+                     v-if="group.label"
+                     class="flex h-7 items-center px-2 text-sm-medium text-ink-gray-4"
+                 >
+-                    {{ group.label }}
++                    {{ __(group.label) }}
+                 </div>
+                 <button
+                     v-for="{ item, index } in group.entries"
+@@ -27,7 +27,7 @@
+                     @mouseover="selectedIndex = index"
+                 >
+                     <span :class="item.icon" class="mr-2 h-4 w-4" aria-hidden="true" />
+-                    <span>{{ item.title }}</span>
++                    <span>{{ __(item.title) }}</span>
+                 </button>
+             </template>
+         </template>
+@@ -35,7 +35,7 @@
+             v-else
+             class="slash-commands-empty px-3 py-1.5 text-sm text-ink-gray-5"
+         >
+-            No commands found
++            {{ __("No commands found") }}
+         </div>
+     </div>
+ </template>
+diff --git a/frontend/src/components/tiptap-extensions/WikiBubbleMenu.vue b/frontend/src/components/tiptap-extensions/WikiBubbleMenu.vue
+index 0cc963f..50e74a6 100644
+--- a/frontend/src/components/tiptap-extensions/WikiBubbleMenu.vue
++++ b/frontend/src/components/tiptap-extensions/WikiBubbleMenu.vue
+@@ -40,6 +40,15 @@ const props = defineProps({
+ 
+ const { isMobile } = useMobile();
+ 
++// frappe-ui renders item labels verbatim and ships them in English; wrap them
++// so both the atoms and the hand-rolled items follow the site language.
++const __ = (text) => (window.__ && text ? window.__ (text) : text);
++
++function translateItem(item) {
++	if (!item || typeof item.label !== 'string') return item;
++	return { ...item, label: __(item.label) };
++}
++
+ const UnderlineItem = {
+ 	icon: 'lucide-underline',
+ 	label: 'Underline',
+@@ -72,7 +81,7 @@ const bubbleItems = [
+ 	Separator,
+ 	Blockquote,
+ 	CodeBlockItem,
+-];
++].map(translateItem);
+ 
+ // Sticky toolbar height (WikiToolbar measures ~49px); pad a little above it so the
+ // flip boundary clears the toolbar band with room to spare.
+diff --git a/frontend/src/components/tiptap-extensions/WikiToolbar.vue b/frontend/src/components/tiptap-extensions/WikiToolbar.vue
+index 8718cc6..65002f8 100644
+--- a/frontend/src/components/tiptap-extensions/WikiToolbar.vue
++++ b/frontend/src/components/tiptap-extensions/WikiToolbar.vue
+@@ -47,6 +47,28 @@ const emit = defineEmits(['uploadImage']);
+ 
+ const imageInput = ref(null);
+ 
++// frappe-ui renders toolbar labels verbatim and ships them in English. Wrap
++// every label (atoms, hand-rolled items and group headers) so the toolbar
++// follows the site language. Translations are boot-injected into
++// `window.translatedMessages` before the bundle runs, so doing it here is safe.
++const __ = (text) => (window.__ && text ? window.__ (text) : text);
++
++function translateItem(item) {
++	if (!item || typeof item.label !== 'string') return item;
++	if (item.type === 'group') {
++		return {
++			...item,
++			label: __(item.label),
++			items: item.items.map(translateItem),
++		};
++	}
++	return { ...item, label: __(item.label) };
++}
++
++function translateItems(items) {
++	return items.map(translateItem);
++}
++
+ // Atoms exist only for items whose command lives in frappe-ui's kits; the
+ // rest (underline, task list via @tiptap/extension-list, code block, PDF block,
+ // file-input image upload) get hand-rolled MenuItem objects with the same
+@@ -100,7 +122,7 @@ const HeadingGroup = {
+ 	items: [H1, H2, H3, H4, H5, H6],
+ };
+ 
+-const toolbarItems = [
++const toolbarItems = translateItems([
+ 	HeadingGroup,
+ 	Separator,
+ 	Bold,
+@@ -125,7 +147,7 @@ const toolbarItems = [
+ 	Separator,
+ 	Undo,
+ 	Redo,
+-];
++]);
+ 
+ function handleImageSelect(event) {
+ 	const file = event.target.files?.[0];

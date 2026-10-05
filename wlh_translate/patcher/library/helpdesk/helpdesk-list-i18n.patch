@@ -1,0 +1,334 @@
+diff --git a/desk/src/components/ListViewBuilder.vue b/desk/src/components/ListViewBuilder.vue
+index 6a8bc26..ac6e1d3 100644
+--- a/desk/src/components/ListViewBuilder.vue
++++ b/desk/src/components/ListViewBuilder.vue
+@@ -65,7 +65,7 @@
+       <ListHeaderItem
+         v-for="column in columns"
+         :key="column.key"
+-        :item="column"
++        :item="{ ...column, label: __(column.label) }"
+         @columnWidthUpdated="handleColumnResize"
+       />
+     </ListHeader>
+@@ -543,7 +543,7 @@ function listCell(column: any, row: any, item: any, idx: number) {
+   if (idx === 0) {
+     return h("span", {
+       class: "truncate text-base text-ink-gray-6",
+-      textContent: item,
++      textContent: __(item),
+     });
+   }
+   if (column.type === "Datetime") {
+@@ -567,7 +567,7 @@ function listCell(column: any, row: any, item: any, idx: number) {
+   }
+   return h("span", {
+     class: "truncate flex-1",
+-    textContent: item,
++    textContent: __(item),
+   });
+ }
+ 
+diff --git a/desk/src/components/TicketPriority.vue b/desk/src/components/TicketPriority.vue
+index dd5af83..b5c0917 100644
+--- a/desk/src/components/TicketPriority.vue
++++ b/desk/src/components/TicketPriority.vue
+@@ -56,7 +56,7 @@
+         />
+       </svg>
+     </span>
+-    <span v-if="!iconOnly" class="truncate">{{ priority }}</span>
++    <span v-if="!iconOnly" class="truncate">{{ __(priority) }}</span>
+   </span>
+ </template>
+ 
+diff --git a/desk/src/components/view-controls/ColumnSettings.vue b/desk/src/components/view-controls/ColumnSettings.vue
+index de346a3..e6953a3 100644
+--- a/desk/src/components/view-controls/ColumnSettings.vue
++++ b/desk/src/components/view-controls/ColumnSettings.vue
+@@ -1,7 +1,7 @@
+ <template>
+   <NestedPopover>
+     <template #target>
+-      <Button label="Columns">
++      <Button :label="__('Columns')">
+         <template v-if="hideLabel" #icon>
+           <ColumnsIcon class="h-4" />
+         </template>
+@@ -102,32 +102,32 @@
+               <FormControl
+                 type="text"
+                 size="md"
+-                label="Label"
++                :label="__('Label')"
+                 v-model="column.label"
+                 class="sm:w-full w-52"
+-                placeholder="First Name"
++                :placeholder="__('First Name')"
+               />
+               <FormControl
+                 type="text"
+                 size="md"
+-                label="Width"
++                :label="__('Width')"
+                 class="sm:w-full w-52"
+                 v-model="column.width"
+                 placeholder="10rem"
+-                :description="'Width can be in number, pixel or rem (eg. 3, 30px, 10rem)'"
++                :description="__('Width can be in number, pixel or rem (eg. 3, 30px, 10rem)')"
+                 :debounce="500"
+               />
+             </div>
+             <div class="flex w-full gap-2 border-t pt-2">
+               <Button
+                 variant="subtle"
+-                label="Cancel"
++                :label="__('Cancel')"
+                 class="w-full flex-1"
+                 @click="cancelUpdate"
+               />
+               <Button
+                 variant="solid"
+-                label="Update"
++                :label="__('Update')"
+                 class="w-full flex-1"
+                 @click="updateColumn(column)"
+               />
+diff --git a/desk/src/components/view-controls/Reload.vue b/desk/src/components/view-controls/Reload.vue
+index 3f3f224..6284bc5 100644
+--- a/desk/src/components/view-controls/Reload.vue
++++ b/desk/src/components/view-controls/Reload.vue
+@@ -1,5 +1,5 @@
+ <template>
+-  <Button label="Refresh" :loading="loading">
++  <Button :label="__('Refresh')" :loading="loading">
+     <template #icon>
+       <RefreshIcon class="h-4 w-4" />
+     </template>
+diff --git a/desk/src/components/view-controls/SortBy.vue b/desk/src/components/view-controls/SortBy.vue
+index 1fbcb59..02cb237 100644
+--- a/desk/src/components/view-controls/SortBy.vue
++++ b/desk/src/components/view-controls/SortBy.vue
+@@ -3,11 +3,11 @@
+     v-if="!sortValues?.size"
+     :options="options"
+     value=""
+-    :placeholder="'First Name'"
++    :placeholder="__('First Name')"
+     @change="(e) => setSort(e)"
+   >
+     <template #target="{ togglePopover }">
+-      <Button :label="'Sort'" @click="togglePopover()">
++      <Button :label="__('Sort')" @click="togglePopover()">
+         <template v-if="hideLabel" #icon>
+           <SortIcon class="h-4" />
+         </template>
+@@ -19,7 +19,7 @@
+   </Autocomplete>
+   <NestedPopover v-else>
+     <template #target="{ open }">
+-      <Button v-if="sortValues.size > 1" :label="'Sort'">
++      <Button v-if="sortValues.size > 1" :label="__('Sort')">
+         <template v-if="hideLabel" #icon>
+           <SortIcon class="h-4" />
+         </template>
+@@ -103,7 +103,7 @@
+                   :value="sort.fieldname"
+                   :options="sortOptions.data"
+                   @change="(e) => updateSort(e, i)"
+-                  :placeholder="'First Name'"
++                  :placeholder="__('First Name')"
+                 >
+                   <template
+                     #target="{ togglePopover, selectedValue, displayValue }"
+@@ -137,7 +137,7 @@
+             <Autocomplete
+               :options="options"
+               value=""
+-              :placeholder="'First Name'"
++              :placeholder="__('First Name')"
+               @change="(e) => setSort(e)"
+             >
+               <template #target="{ togglePopover }">
+diff --git a/desk/src/components/view-controls/filter/Filter.vue b/desk/src/components/view-controls/filter/Filter.vue
+index 0fc5334..dff4494 100644
+--- a/desk/src/components/view-controls/filter/Filter.vue
++++ b/desk/src/components/view-controls/filter/Filter.vue
+@@ -88,7 +88,7 @@
+                       class="!text-ink-gray-5"
+                       :label="__('Add filter')"
+                       @click="addNewFilter()"
+-                      tooltip="Add Filter (A)"
++                      :tooltip="__('Add Filter (A)')"
+                     >
+                       <template #prefix>
+                         <LucidePlus class="size-4" />
+diff --git a/desk/src/components/view-controls/filter/FilterTrigger.vue b/desk/src/components/view-controls/filter/FilterTrigger.vue
+index d2e90df..d53174b 100644
+--- a/desk/src/components/view-controls/filter/FilterTrigger.vue
++++ b/desk/src/components/view-controls/filter/FilterTrigger.vue
+@@ -41,6 +41,6 @@ interface E {
+   (event: "clear"): void;
+ }
+ 
+-withDefaults(defineProps<P>(), { label: "Filter" });
++withDefaults(defineProps<P>(), { label: __("Filter") });
+ defineEmits<E>();
+ </script>
+diff --git a/desk/src/components/view-controls/filter/filter.ts b/desk/src/components/view-controls/filter/filter.ts
+index f104b03..9f29271 100644
+--- a/desk/src/components/view-controls/filter/filter.ts
++++ b/desk/src/components/view-controls/filter/filter.ts
+@@ -1,4 +1,5 @@
+ import { useDebounceFn } from "@vueuse/core";
++import { __ } from "@/translation";
+ import { createResource } from "frappe-ui";
+ import { computed, inject, Component, ComputedRef } from "vue";
+ import LucideCalendar from "~icons/lucide/calendar";
+@@ -214,23 +215,23 @@ function toUiValue(field: FilterField, value: any): any {
+ 
+ function getOperators(fieldtype: string, fieldname?: string) {
+   const equality = [
+-    { label: "Equals", value: "equals" },
+-    { label: "Not Equals", value: "not equals" },
++    { label: __("Equals"), value: "equals" },
++    { label: __("Not Equals"), value: "not equals" },
+   ];
+   const like = [
+-    { label: "Like", value: "like" },
+-    { label: "Not Like", value: "not like" },
++    { label: __("Like"), value: "like" },
++    { label: __("Not Like"), value: "not like" },
+   ];
+   const inclusion = [
+-    { label: "In", value: "in" },
+-    { label: "Not In", value: "not in" },
++    { label: __("In"), value: "in" },
++    { label: __("Not In"), value: "not in" },
+   ];
+-  const is = [{ label: "Is", value: "is" }];
++  const is = [{ label: __("Is"), value: "is" }];
+   const comparison = [
+-    { label: "Less Than", value: "<" },
+-    { label: "Greater Than", value: ">" },
+-    { label: "Less Than or Equal To", value: "<=" },
+-    { label: "Greater Than or Equal To", value: ">=" },
++    { label: __("Less Than"), value: "<" },
++    { label: __("Greater Than"), value: ">" },
++    { label: __("Less Than or Equal To"), value: "<=" },
++    { label: __("Greater Than or Equal To"), value: ">=" },
+   ];
+ 
+   if (fieldname && multiValueFields.includes(fieldname))
+@@ -249,8 +250,8 @@ function getOperators(fieldtype: string, fieldname?: string) {
+       ...equality,
+       ...is,
+       ...comparison,
+-      { label: "Between", value: "between" },
+-      { label: "Timespan", value: "timespan" },
++      { label: __("Between"), value: "between" },
++      { label: __("Timespan"), value: "timespan" },
+     ];
+   }
+   if (typeRating.includes(fieldtype))
+@@ -301,19 +302,19 @@ export function fieldIcon(field: FilterField): Component {
+ 
+ export function filterSummary(filter: ActiveFilter): string {
+   const operatorLabels: Record<string, string> = {
+-    equals: "is",
+-    "not equals": "is not",
+-    like: "contains",
+-    "not like": "doesn't contain",
+-    in: "in",
+-    "not in": "not in",
+-    is: "is",
+-    between: "between",
+-    timespan: "in",
+-    ">": "greater than",
+-    "<": "less than",
+-    ">=": "greater than or equal to",
+-    "<=": "less than or equal to",
++    equals: __("is"),
++    "not equals": __("is not"),
++    like: __("contains"),
++    "not like": __("doesn't contain"),
++    in: __("in"),
++    "not in": __("not in"),
++    is: __("is"),
++    between: __("between"),
++    timespan: __("in"),
++    ">": __("greater than"),
++    "<": __("less than"),
++    ">=": __("greater than or equal to"),
++    "<=": __("less than or equal to"),
+   };
+   return `${filter.field.label} ${
+     operatorLabels[filter.operator] || filter.operator
+@@ -360,28 +361,28 @@ const oppositeOperatorMap: Record<string, string> = Object.fromEntries(
+ );
+ 
+ const timespanOptions = [
+-  { label: "Today", value: "today" },
+-  { label: "Yesterday", value: "yesterday" },
+-  { label: "Tomorrow", value: "tomorrow" },
+-  { label: "Last 7 Days", value: "last 7 days" },
+-  { label: "Last 14 Days", value: "last 14 days" },
+-  { label: "Last 30 Days", value: "last 30 days" },
+-  { label: "Last 90 Days", value: "last 90 days" },
+-  { label: "Last Week", value: "last week" },
+-  { label: "Last Month", value: "last month" },
+-  { label: "Last Quarter", value: "last quarter" },
+-  { label: "Last 6 Months", value: "last 6 months" },
+-  { label: "Last Year", value: "last year" },
+-  { label: "This Week", value: "this week" },
+-  { label: "This Month", value: "this month" },
+-  { label: "This Quarter", value: "this quarter" },
+-  { label: "This Year", value: "this year" },
+-  { label: "Next Week", value: "next week" },
+-  { label: "Next Month", value: "next month" },
+-  { label: "Next Quarter", value: "next quarter" },
+-  { label: "Next 6 Months", value: "next 6 months" },
+-  { label: "Next Year", value: "next year" },
+-  { label: "Next 7 Days", value: "next 7 days" },
+-  { label: "Next 14 Days", value: "next 14 days" },
+-  { label: "Next 30 Days", value: "next 30 days" },
++  { label: __("Today"), value: "today" },
++  { label: __("Yesterday"), value: "yesterday" },
++  { label: __("Tomorrow"), value: "tomorrow" },
++  { label: __("Last 7 Days"), value: "last 7 days" },
++  { label: __("Last 14 Days"), value: "last 14 days" },
++  { label: __("Last 30 Days"), value: "last 30 days" },
++  { label: __("Last 90 Days"), value: "last 90 days" },
++  { label: __("Last Week"), value: "last week" },
++  { label: __("Last Month"), value: "last month" },
++  { label: __("Last Quarter"), value: "last quarter" },
++  { label: __("Last 6 Months"), value: "last 6 months" },
++  { label: __("Last Year"), value: "last year" },
++  { label: __("This Week"), value: "this week" },
++  { label: __("This Month"), value: "this month" },
++  { label: __("This Quarter"), value: "this quarter" },
++  { label: __("This Year"), value: "this year" },
++  { label: __("Next Week"), value: "next week" },
++  { label: __("Next Month"), value: "next month" },
++  { label: __("Next Quarter"), value: "next quarter" },
++  { label: __("Next 6 Months"), value: "next 6 months" },
++  { label: __("Next Year"), value: "next year" },
++  { label: __("Next 7 Days"), value: "next 7 days" },
++  { label: __("Next 14 Days"), value: "next 14 days" },
++  { label: __("Next 30 Days"), value: "next 30 days" },
+ ];
+diff --git a/desk/src/pages/ticket/Tickets.vue b/desk/src/pages/ticket/Tickets.vue
+index f4145de..bd682e5 100644
+--- a/desk/src/pages/ticket/Tickets.vue
++++ b/desk/src/pages/ticket/Tickets.vue
+@@ -188,8 +188,8 @@ const options = computed(() => ({
+       custom: ({ item }) => {
+         const status = getStatus(item);
+         const label = isCustomerPortal.value
+-          ? status?.["label_customer"]
+-          : status?.["label_agent"];
++          ? __(status?.["label_customer"])
++          : __(status?.["label_agent"]);
+         return h(
+           "div",
+           { class: "flex items-center gap-1.5 justify-start w-full" },

@@ -16,3 +16,6 @@ wlh_translate.patches.v1_0.unify_conflicting_translations
 wlh_translate.patches.v1_0.add_literal_translations
 wlh_translate.patches.v1_0.add_lms_settings_translations
 wlh_translate.patches.v1_0.add_lms_remaining_translations
+wlh_translate.patches.v1_0.add_editor_translations
+wlh_translate.patches.v1_0.add_wiki_slash_translations
+wlh_translate.patches.v1_0.add_helpdesk_listview_translations
