@@ -1,0 +1,89 @@
+diff --git a/frontend/src/components/Settings/SettingFields.vue b/frontend/src/components/Settings/SettingFields.vue
+index ea69462..09b00cb 100644
+--- a/frontend/src/components/Settings/SettingFields.vue
++++ b/frontend/src/components/Settings/SettingFields.vue
+@@ -10,7 +10,7 @@
+ 				class="text-p-base-semibold text-ink-gray-8 mb-1"
+ 				:class="{ 'mt-6': index > 0 }"
+ 			>
+-				{{ section.label }}
++				{{ __(section.label) }}
+ 			</div>
+ 			<template
+ 				v-for="(column, columnIndex) in section.columns"
+@@ -86,7 +86,7 @@
+ 						<CodeEditor
+ 							:label="__(field.label)"
+ 							type="HTML"
+-							description="The HTML you add here will be shown on your sign up page."
++							:description="__('The HTML you add here will be shown on your sign up page.')"
+ 							v-model="data[field.name]"
+ 							height="250px"
+ 							class="shrink-0"
+diff --git a/frontend/src/components/Sidebar/UserDropdown.vue b/frontend/src/components/Sidebar/UserDropdown.vue
+index 132ba23..9fb5398 100644
+--- a/frontend/src/components/Sidebar/UserDropdown.vue
++++ b/frontend/src/components/Sidebar/UserDropdown.vue
+@@ -158,7 +158,7 @@ const userDropdownOptions = computed(() => {
+ 			items: [
+ 				{
+ 					icon: 'lucide-user',
+-					label: 'My Profile',
++					label: __('My Profile'),
+ 					onClick: () => {
+ 						router.push(`/user/${userResource.data?.username}`)
+ 					},
+@@ -168,7 +168,7 @@ const userDropdownOptions = computed(() => {
+ 				},
+ 				{
+ 					icon: theme.value === 'light' ? Moon : Sun,
+-					label: 'Toggle Theme',
++					label: __('Toggle Theme'),
+ 					onClick: () => {
+ 						toggleTheme()
+ 					},
+@@ -188,7 +188,7 @@ const userDropdownOptions = computed(() => {
+ 				},
+ 				{
+ 					icon: 'lucide-settings',
+-					label: 'Settings',
++					label: __('Settings'),
+ 					onClick: () => {
+ 						settingsStore.isSettingsOpen = true
+ 					},
+@@ -216,7 +216,7 @@ const userDropdownOptions = computed(() => {
+ 					},
+ 				},
+ 				{
+-					label: 'Clear Demo Data',
++					label: __('Clear Demo Data'),
+ 					icon: 'lucide-trash-2',
+ 					onClick: () => {
+ 						clearDemoDataConfirmation()
+@@ -230,7 +230,7 @@ const userDropdownOptions = computed(() => {
+ 				},
+ 				{
+ 					icon: FrappeCloudIcon,
+-					label: 'Login to Frappe Cloud',
++					label: __('Login to Frappe Cloud'),
+ 					onClick: () => {
+ 						$dialog({
+ 							title: __('Login to Frappe Cloud?'),
+@@ -258,7 +258,7 @@ const userDropdownOptions = computed(() => {
+ 				},
+ 				{
+ 					icon: 'lucide-log-out',
+-					label: 'Log out',
++					label: __('Log out'),
+ 					onClick: () => {
+ 						logout.submit().then(() => {
+ 							isLoggedIn = false
+@@ -270,7 +270,7 @@ const userDropdownOptions = computed(() => {
+ 				},
+ 				{
+ 					icon: 'lucide-log-in',
+-					label: 'Log in',
++					label: __('Log in'),
+ 					onClick: () => {
+ 						window.location.href = '/login'
+ 					},

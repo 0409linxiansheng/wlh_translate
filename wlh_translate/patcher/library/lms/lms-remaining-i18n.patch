@@ -1,0 +1,439 @@
+diff --git a/frontend/src/components/Assignment.vue b/frontend/src/components/Assignment.vue
+index d239f57..9f58803 100644
+--- a/frontend/src/components/Assignment.vue
++++ b/frontend/src/components/Assignment.vue
+@@ -535,9 +535,9 @@ onUnmounted(() => {
+ 
+ const submissionStatusOptions = computed(() => {
+ 	return [
+-		{ label: 'Not Graded', value: 'Not Graded' },
+-		{ label: 'Pass', value: 'Pass' },
+-		{ label: 'Fail', value: 'Fail' },
++		{ label: __('Not Graded'), value: 'Not Graded' },
++		{ label: __('Pass'), value: 'Pass' },
++		{ label: __('Fail'), value: 'Fail' },
+ 	]
+ })
+ 
+diff --git a/frontend/src/components/Layouts/SettingsTable.vue b/frontend/src/components/Layouts/SettingsTable.vue
+index a575290..b3f164f 100644
+--- a/frontend/src/components/Layouts/SettingsTable.vue
++++ b/frontend/src/components/Layouts/SettingsTable.vue
+@@ -14,7 +14,7 @@
+ 					:key="column.key"
+ 					class="text-p-sm"
+ 				>
+-					{{ column.label }}
++					{{ __(column.label) }}
+ 				</ListHeaderCell>
+ 			</ListHeader>
+ 			<div role="rowgroup">
+@@ -80,7 +80,7 @@
+ 											:theme="badge.theme || 'gray'"
+ 											class="shrink-0"
+ 										>
+-											{{ badge.label }}
++											{{ __(badge.label) }}
+ 										</Badge>
+ 									</div>
+ 									<template v-if="hiddenBadges(column, row).length">
+diff --git a/frontend/src/components/Modals/DiscussionModal.vue b/frontend/src/components/Modals/DiscussionModal.vue
+index 2429a03..c5a0ca8 100644
+--- a/frontend/src/components/Modals/DiscussionModal.vue
++++ b/frontend/src/components/Modals/DiscussionModal.vue
+@@ -4,7 +4,7 @@
+ 		size="2xl"
+ 		:actions="[
+ 			{
+-				label: 'Post',
++				label: __('Post'),
+ 				variant: 'solid',
+ 				onClick: ({ close }) => submitTopic(close),
+ 			},
+diff --git a/frontend/src/components/Modals/JobApplicationModal.vue b/frontend/src/components/Modals/JobApplicationModal.vue
+index d1448c3..053ba4a 100644
+--- a/frontend/src/components/Modals/JobApplicationModal.vue
++++ b/frontend/src/components/Modals/JobApplicationModal.vue
+@@ -6,7 +6,7 @@
+ 		size="lg"
+ 		:actions="[
+ 			{
+-				label: 'Submit',
++				label: __('Submit'),
+ 				variant: 'solid',
+ 				onClick: ({ close }) => submitResume(close),
+ 			},
+diff --git a/frontend/src/components/Modals/PageModal.vue b/frontend/src/components/Modals/PageModal.vue
+index ed4b8c6..ae856ca 100644
+--- a/frontend/src/components/Modals/PageModal.vue
++++ b/frontend/src/components/Modals/PageModal.vue
+@@ -5,7 +5,7 @@
+ 		size="lg"
+ 		:actions="[
+ 			{
+-				label: 'Add',
++				label: __('Add'),
+ 				variant: 'solid',
+ 				onClick: ({ close }) => {
+ 					addWebPage(close)
+diff --git a/frontend/src/components/Modals/ReviewModal.vue b/frontend/src/components/Modals/ReviewModal.vue
+index 49a6fa3..b9d7bb6 100644
+--- a/frontend/src/components/Modals/ReviewModal.vue
++++ b/frontend/src/components/Modals/ReviewModal.vue
+@@ -5,7 +5,7 @@
+ 		size="xl"
+ 		:actions="[
+ 			{
+-				label: 'Submit',
++				label: __('Submit'),
+ 				variant: 'solid',
+ 				onClick: ({ close }) => submitReview(close),
+ 			},
+diff --git a/frontend/src/components/Notifications/NotificationPanel.vue b/frontend/src/components/Notifications/NotificationPanel.vue
+index 6151ec4..1ef65a6 100644
+--- a/frontend/src/components/Notifications/NotificationPanel.vue
++++ b/frontend/src/components/Notifications/NotificationPanel.vue
+@@ -107,7 +107,7 @@ const { isMobile } = useScreenSize()
+ 
+ const panelRef = ref(null)
+ const activeTab = ref('Unread')
+-const tabs = [{ label: 'Unread' }, { label: 'Read' }]
++const tabs = computed(() => [{ label: __('Unread') }, { label: __('Read') }])
+ 
+ onClickOutside(panelRef, () => closeNotifications(), {
+ 	ignore: ['[data-notifications-trigger]'],
+diff --git a/frontend/src/components/ResponsiveListView.vue b/frontend/src/components/ResponsiveListView.vue
+index ee80779..68ab013 100644
+--- a/frontend/src/components/ResponsiveListView.vue
++++ b/frontend/src/components/ResponsiveListView.vue
+@@ -14,7 +14,7 @@
+ 					<ListHeaderItem
+ 						v-for="column in shrinkableColumns"
+ 						:key="column.key"
+-						:item="column"
++						:item="{ ...column, label: __(column.label) }"
+ 					>
+ 						<template #prefix="{ item }">
+ 							<span
+@@ -85,7 +85,7 @@
+ 										>·</span
+ 									>
+ 									<span class="min-w-0 truncate [&>*]:truncate">
+-										<span class="sr-only">{{ column.label }}: </span>
++										<span class="sr-only">{{ __(column.label) }}: </span>
+ 										<slot
+ 											name="cell"
+ 											:column="column"
+diff --git a/frontend/src/components/Settings/Coupons/CouponItems.vue b/frontend/src/components/Settings/Coupons/CouponItems.vue
+index 06e5889..faecca3 100644
+--- a/frontend/src/components/Settings/Coupons/CouponItems.vue
++++ b/frontend/src/components/Settings/Coupons/CouponItems.vue
+@@ -28,8 +28,8 @@
+ 							<Select
+ 								v-model="row.reference_doctype"
+ 								:options="[
+-									{ label: 'Course', value: 'LMS Course' },
+-									{ label: 'Batch', value: 'LMS Batch' },
++									{ label: __('Course'), value: 'LMS Course' },
++									{ label: __('Batch'), value: 'LMS Batch' },
+ 								]"
+ 								class="w-full"
+ 							/>
+diff --git a/frontend/src/pages/AssignmentSubmissionList.vue b/frontend/src/pages/AssignmentSubmissionList.vue
+index 8f54a14..70a3036 100644
+--- a/frontend/src/pages/AssignmentSubmissionList.vue
++++ b/frontend/src/pages/AssignmentSubmissionList.vue
+@@ -161,9 +161,9 @@ const submissionColumns = computed(() => {
+ const statusOptions = computed(() => {
+ 	return [
+ 		{ label: '', value: '' },
+-		{ label: 'Pass', value: 'Pass' },
+-		{ label: 'Fail', value: 'Fail' },
+-		{ label: 'Not Graded', value: 'Not Graded' },
++		{ label: __('Pass'), value: 'Pass' },
++		{ label: __('Fail'), value: 'Fail' },
++		{ label: __('Not Graded'), value: 'Not Graded' },
+ 	]
+ })
+ 
+diff --git a/frontend/src/pages/Batches/components/AdminBatchDashboard.vue b/frontend/src/pages/Batches/components/AdminBatchDashboard.vue
+index a6a81d0..896a591 100644
+--- a/frontend/src/pages/Batches/components/AdminBatchDashboard.vue
++++ b/frontend/src/pages/Batches/components/AdminBatchDashboard.vue
+@@ -121,7 +121,7 @@
+ 						subtitle: __('Progress of students in courses and assessments'),
+ 						xAxis: {
+ 							key: 'task',
+-							title: 'Tasks',
++							title: __('Tasks'),
+ 							type: 'category',
+ 						},
+ 						yAxis: {
+diff --git a/frontend/src/pages/DataImport.vue b/frontend/src/pages/DataImport.vue
+index 746418d..2060ed0 100644
+--- a/frontend/src/pages/DataImport.vue
++++ b/frontend/src/pages/DataImport.vue
+@@ -30,21 +30,21 @@ onMounted(() => {
+ 	}
+ })
+ 
+-const doctypeMap = {
++const doctypeMap = computed(() => ({
+ 	'LMS Course': {
+-		title: 'Courses',
++		title: __('Courses'),
+ 		listRoute: '/courses',
+ 		pageRoute: `/courses/docname`,
+ 	},
+ 	'LMS Batch': {
+-		title: 'Batches',
++		title: __('Batches'),
+ 		listRoute: '/batches',
+ 	},
+ 	'LMS Category': {
+-		title: 'Categories',
++		title: __('Categories'),
+ 		listRoute: '/lms',
+ 	},
+-}
++}))
+ 
+ // Named here rather than taken from the imported component: its own trail is
+ // internal state we cannot reach, and the page still needs a back link on a
+diff --git a/frontend/src/pages/Forms/AssessmentForm.vue b/frontend/src/pages/Forms/AssessmentForm.vue
+index 7a32660..41bb332 100644
+--- a/frontend/src/pages/Forms/AssessmentForm.vue
++++ b/frontend/src/pages/Forms/AssessmentForm.vue
+@@ -84,9 +84,9 @@ const refusal = computed(() => {
+ })
+ 
+ const assessmentTypes = computed(() => [
+-	{ label: 'Quiz', value: 'LMS Quiz' },
+-	{ label: 'Assignment', value: 'LMS Assignment' },
+-	{ label: 'Programming Exercise', value: 'LMS Programming Exercise' },
++	{ label: __('Quiz'), value: 'LMS Quiz' },
++	{ label: __('Assignment'), value: 'LMS Assignment' },
++	{ label: __('Programming Exercise'), value: 'LMS Programming Exercise' },
+ ])
+ 
+ const assessmentResource = createResource({
+diff --git a/frontend/src/pages/Forms/AssignmentForm.vue b/frontend/src/pages/Forms/AssignmentForm.vue
+index f2ebdcc..9d5a0e6 100644
+--- a/frontend/src/pages/Forms/AssignmentForm.vue
++++ b/frontend/src/pages/Forms/AssignmentForm.vue
+@@ -300,11 +300,11 @@ const saveAssignment = (): void => {
+ 
+ const assignmentOptions = computed(() => {
+ 	return [
+-		{ label: 'PDF', value: 'PDF' },
+-		{ label: 'Image', value: 'Image' },
+-		{ label: 'Document', value: 'Document' },
+-		{ label: 'Text', value: 'Text' },
+-		{ label: 'URL', value: 'URL' },
++		{ label: __('PDF'), value: 'PDF' },
++		{ label: __('Image'), value: 'Image' },
++		{ label: __('Document'), value: 'Document' },
++		{ label: __('Text'), value: 'Text' },
++		{ label: __('URL'), value: 'URL' },
+ 	]
+ })
+ </script>
+diff --git a/frontend/src/pages/Forms/LiveClassForm.vue b/frontend/src/pages/Forms/LiveClassForm.vue
+index 8b59a0c..a996dea 100644
+--- a/frontend/src/pages/Forms/LiveClassForm.vue
++++ b/frontend/src/pages/Forms/LiveClassForm.vue
+@@ -199,15 +199,15 @@ const getTimezoneOptions = () => {
+ const getRecordingOptions = () => {
+ 	return [
+ 		{
+-			label: 'No Recording',
++			label: __('No Recording'),
+ 			value: 'No Recording',
+ 		},
+ 		{
+-			label: 'Local',
++			label: __('Local'),
+ 			value: 'Local',
+ 		},
+ 		{
+-			label: 'Cloud',
++			label: __('Cloud'),
+ 			value: 'Cloud',
+ 		},
+ 	]
+diff --git a/frontend/src/pages/Forms/PersonaForm.vue b/frontend/src/pages/Forms/PersonaForm.vue
+index daf7f0d..5e4b12c 100644
+--- a/frontend/src/pages/Forms/PersonaForm.vue
++++ b/frontend/src/pages/Forms/PersonaForm.vue
+@@ -237,7 +237,7 @@ const leaveTo = async (route, persist) => {
+ 
+ usePageMeta(() => {
+ 	return {
+-		title: 'Persona',
++		title: __('Persona'),
+ 		icon: brand.favicon,
+ 	}
+ })
+diff --git a/frontend/src/pages/ProfileEvaluator.vue b/frontend/src/pages/ProfileEvaluator.vue
+index bc63cbb..f5d77b5 100644
+--- a/frontend/src/pages/ProfileEvaluator.vue
++++ b/frontend/src/pages/ProfileEvaluator.vue
+@@ -408,31 +408,31 @@ const startCalendarAuthorization = async () => {
+ const days = computed(() => {
+ 	return [
+ 		{
+-			label: 'Monday',
++			label: __('Monday'),
+ 			value: 'Monday',
+ 		},
+ 		{
+-			label: 'Tuesday',
++			label: __('Tuesday'),
+ 			value: 'Tuesday',
+ 		},
+ 		{
+-			label: 'Wednesday',
++			label: __('Wednesday'),
+ 			value: 'Wednesday',
+ 		},
+ 		{
+-			label: 'Thursday',
++			label: __('Thursday'),
+ 			value: 'Thursday',
+ 		},
+ 		{
+-			label: 'Friday',
++			label: __('Friday'),
+ 			value: 'Friday',
+ 		},
+ 		{
+-			label: 'Saturday',
++			label: __('Saturday'),
+ 			value: 'Saturday',
+ 		},
+ 		{
+-			label: 'Sunday',
++			label: __('Sunday'),
+ 			value: 'Sunday',
+ 		},
+ 	]
+diff --git a/frontend/src/pages/Statistics.vue b/frontend/src/pages/Statistics.vue
+index 3ec10bf..23cf29b 100644
+--- a/frontend/src/pages/Statistics.vue
++++ b/frontend/src/pages/Statistics.vue
+@@ -12,20 +12,20 @@
+ 				<Tooltip :text="__('Published Courses')">
+ 					<NumberChart
+ 						class="border rounded-md"
+-						:config="{ title: 'Courses', value: chartDetails.data.courses }"
++						:config="{ title: __('Courses'), value: chartDetails.data.courses }"
+ 					/>
+ 				</Tooltip>
+ 				<Tooltip :text="__('Active Members')">
+ 					<NumberChart
+ 						class="border rounded-md"
+-						:config="{ title: 'Signups', value: chartDetails.data.users }"
++						:config="{ title: __('Signups'), value: chartDetails.data.users }"
+ 					/>
+ 				</Tooltip>
+ 				<Tooltip :text="__('Course Enrollments')">
+ 					<NumberChart
+ 						class="border rounded-md"
+ 						:config="{
+-							title: 'Enrollments',
++							title: __('Enrollments'),
+ 							value: chartDetails.data.enrollments,
+ 						}"
+ 					/>
+@@ -34,7 +34,7 @@
+ 					<NumberChart
+ 						class="border rounded-md"
+ 						:config="{
+-							title: 'Completions',
++							title: __('Completions'),
+ 							value: chartDetails.data.completions,
+ 						}"
+ 					/>
+@@ -43,7 +43,7 @@
+ 					<NumberChart
+ 						class="border rounded-md"
+ 						:config="{
+-							title: 'Certifications',
++							title: __('Certifications'),
+ 							value: chartDetails.data.certifications,
+ 						}"
+ 					/>
+@@ -55,16 +55,16 @@
+ 						v-if="signupsChart.data"
+ 						:config="{
+ 							data: signupsChart.data,
+-							title: 'Signups',
+-							subtitle: 'Signups per day',
++							title: __('Signups'),
++							subtitle: __('Signups per day'),
+ 							xAxis: {
+ 								key: 'date',
+ 								type: 'time',
+-								title: 'Date',
++								title: __('Date'),
+ 								timeGrain: 'day',
+ 							},
+ 							yAxis: {
+-								title: 'Signups',
++								title: __('Signups'),
+ 							},
+ 							series: [{ name: 'signups', type: 'line', showDataPoints: true }],
+ 						}"
+@@ -75,16 +75,16 @@
+ 						v-if="enrollmentChart.data"
+ 						:config="{
+ 							data: enrollmentChart.data,
+-							title: 'Enrollments',
+-							subtitle: 'Enrollments per day',
++							title: __('Enrollments'),
++							subtitle: __('Enrollments per day'),
+ 							xAxis: {
+ 								key: 'date',
+ 								type: 'time',
+-								title: 'Date',
++								title: __('Date'),
+ 								timeGrain: 'day',
+ 							},
+ 							yAxis: {
+-								title: 'Enrollments',
++								title: __('Enrollments'),
+ 							},
+ 							series: [
+ 								{ name: 'enrollments', type: 'line', showDataPoints: true },
+@@ -97,16 +97,16 @@
+ 						v-if="certification.data"
+ 						:config="{
+ 							data: certification.data,
+-							title: 'Certifications',
+-							subtitle: 'Certifications per day',
++							title: __('Certifications'),
++							subtitle: __('Certifications per day'),
+ 							xAxis: {
+ 								key: 'date',
+ 								type: 'time',
+-								title: 'Date',
++								title: __('Date'),
+ 								timeGrain: 'day',
+ 							},
+ 							yAxis: {
+-								title: 'Certifications',
++								title: __('Certifications'),
+ 							},
+ 							series: [
+ 								{
+@@ -123,8 +123,8 @@
+ 						v-if="courseCompletion.data"
+ 						:config="{
+ 							data: courseCompletion.data,
+-							title: 'Completions',
+-							subtitle: 'Course Completion',
++							title: __('Completions'),
++							subtitle: __('Course Completion'),
+ 							categoryColumn: 'label',
+ 							valueColumn: 'value',
+ 						}"
