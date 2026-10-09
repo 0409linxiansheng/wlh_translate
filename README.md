@@ -301,3 +301,5 @@ pre-commit 配置了以下工具：
 ## 许可
 
 MIT
+## Changelog
+- 2026-10-09: 首次同步到 GitHub
